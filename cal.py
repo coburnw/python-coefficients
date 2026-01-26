@@ -695,7 +695,10 @@ class CalShell(cmd.Cmd):
         self.bus = i2c_bus
         self.procedure = ProcedureShell()
         self.sensors = Sensors(self.bus, self.procedure)
-              
+
+        self.suffix = '.toml'
+        self.filename = 'coefficients{}'.format(self.suffix)
+
         return
     
     def emptyline(self):
@@ -731,13 +734,15 @@ class CalShell(cmd.Cmd):
         serialized = 'date = {}\n'.format(datetime.now())        
         serialized += self.serialize()
 
-        fname = 'coefficients.toml'
-        print(' Saving sensor data to {}'.format(fname))
-        with open(fname, 'w') as fp:
+        filename = self.get_filename()
+        
+        print(' Saving sensor data to {}'.format(filename))
+        with open(filename, 'w') as fp:
             fp.write(serialized)
 
-        print(' calibration data saved.')
-                
+        print(' calibration data saved to {}.'.format(filename))
+        self.filename = filename
+        
         return
 
     def do_exit(self, arg):
@@ -746,6 +751,22 @@ class CalShell(cmd.Cmd):
 
         return True
 
+    def get_filename(self):
+        new_name = input('enter filename without suffix ({}): '.format(self.filename))
+
+        # https://stackoverflow.com/a/7406369
+        keepcharacters = ('.','_')
+        new_name = ''.join(c for c in new_name if c.isalnum() or c in keepcharacters).rstrip()
+
+        filename = self.filename
+        if len(new_name) > 0:
+            filename = new_name
+
+        if not filename.endswith(self.suffix):
+            filename = filename + self.suffix
+
+        return filename
+    
     def serialize(self):
         prefix = 'procedure'
         
