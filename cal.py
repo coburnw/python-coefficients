@@ -177,8 +177,8 @@ class SensorShell(cmd.Cmd):
         return self.stream.value
 
     def serialize(self, prefix):
-        prefix = '{}.{}'.format(prefix, self.id)
-        serialized = '[{}]\n'.format(prefix)
+        serialized = ''
+        serialized += 'id = {}\n'.format(self.id)
         serialized += 'type = {}\n'.format(self.sensor_type)
         serialized += 'chan_addr = {}.{}\n'.format(self.phorp_address, self.phorp_channel)
         serialized += '\n'
@@ -225,7 +225,7 @@ class EhSensorShell(SensorShell):
 
     
 class Sensors(cmd.Cmd):
-    intro = 'Sensor Database, Blank line to return to previous menu...'
+    intro = 'Sensor Database, blank line to return to previous menu...'
 
     def __init__(self, i2c_bus, procedure, *kwargs):
         super().__init__(*kwargs)
@@ -255,19 +255,31 @@ class Sensors(cmd.Cmd):
         return '{}[{}]: '.format('db', sensor_id)
 
     @property
+    def first_index(self):
+        return 0
+    
+    @property
+    def last_index(self):
+        return len(self.sensors) - 1
+    
+    @property
     def sensor(self):
+        if self.sensor_index > self.last_index:
+            self.sensor_index = self.last_index
+
+        # create a list of sensor keys then select key by index
         key = list(self.sensors)[self.sensor_index]
         
         return self.sensors[key]
-
-    def emptyline(self):
-        return True
 
     def to_key(self, id):
         id = id.strip().lower().replace(' ', '_')
         
         return id
     
+    def emptyline(self):
+        return True
+
     def do_new(self, sensor_id):
         ''' new <id>. Create a new sensor instance'''
         sensor_id = sensor_id.strip()
@@ -287,7 +299,7 @@ class Sensors(cmd.Cmd):
             print(' known types are {}. sensor not created.'.format(self.types))
             return
 
-        print('creating new {} sensor {}'.format(sensor_type, sensor_id))
+        print(' creating new {} sensor {}'.format(sensor_type, sensor_id))
         if sensor_type == 'ph':
             sensor = PhSensorShell(self.bus, sensor_id)
         elif sensor_type == 'eh':
@@ -298,24 +310,24 @@ class Sensors(cmd.Cmd):
         self.procedure.prep(sensor)
                
         self.sensors[sensor_key] = sensor
-        self.sensor_index = len(self.sensors) - 1
+        self.sensor_index = self.last_index
 
         sensor.do_show()
         
         return
 
     def do_del(self, arg=None):
-
+        ''' delete sensor. del<ret> selected sensor, del <sensor_id> '''
         if arg:
             sensor_key = self.to_key(arg)
         else:
             sensor_key = self.to_key(self.sensor.id)
 
-        if sensor_key not in self.sensors.keys:
+        if sensor_key not in self.sensors.keys():
             print( ' sensor not found.')
             return
         
-        yn = input(' delete sensor {} (y/n)? '.format(self.sensor.id)).strip().lower()
+        yn = input(' delete sensor {} (y/n)? '.format(self.sensors[sensor_key].id))
         if yn == 'y':
             del self.sensors[sensor_key]
             print( ' sensor deleted.')
@@ -331,7 +343,7 @@ class Sensors(cmd.Cmd):
         return
     
     def do_list(self, arg):
-        ''' List sensors '''
+        ''' list available sensors '''
 
         if len(self.sensors) == 0:
             print(' No sensors in list.  "new" to add a sensor.')
@@ -353,29 +365,29 @@ class Sensors(cmd.Cmd):
         return
 
     def do_prev(self, arg):
-        ''' retreat to previous sensor in list'''
+        ''' move to previous sensor in list'''
         self.sensor_index -= 1
-        if self.sensor_index < 0:
-            self.sensor_index = 0
+        if self.sensor_index < self.first_index:
+            self.sensor_index = self.first_index
 
         return
     
     def do_next(self, arg):
-        ''' advance to next sensor in list'''
+        ''' move to next sensor in list'''
         self.sensor_index += 1
-        if self.sensor_index > len(self.sensors)-1:
-            self.sensor_index = len(self.sensors)-1
+        if self.sensor_index > self.last_index:
+            self.sensor_index = self.last_index
 
         return
     
     def do_cal(self, arg):
-        ''' Acquire sensor calibration data'''
+        ''' acquire sensor calibration data'''
         self.procedure.run(self.sensor)
             
         return
 
-    def do_measure(self, arg):
-        ''' Sensor measurement in engineering units'''
+    def do_meas(self, arg):
+        ''' sensor measurement in engineering units'''
         self.sensor.update()
 
         if self.sensor.is_calibrated:
@@ -395,8 +407,10 @@ class Sensors(cmd.Cmd):
         # Sensors
         serialized = '[{}]\n'.format(prefix)
 
-        for sensor in self.sensors.values():
-            serialized += '{}\n'.format(sensor.serialize(prefix))
+        for key, sensor in self.sensors.items():
+            sensor_prefix = '{}.{}'.format(prefix, key)
+            serialized += '[{}]\n'.format(sensor_prefix)
+            serialized += '{}\n'.format(sensor.serialize(sensor_prefix))
             
         return serialized
             
@@ -555,9 +569,7 @@ class ProcedureShell(cmd.Cmd):
         return
 
     def emptyline(self):
-        self.do_show()
-        
-        return False
+        return True
     
     def do_show(self, arg=None):
         ''' print present values'''
@@ -604,7 +616,7 @@ class ProcedureShell(cmd.Cmd):
         try:
             self.p1.value = float(arg)
         except:
-            print('invalid value: setpoint unchanged.')
+            print(' invalid value: setpoint unchanged.')
 
         self.do_show()
         
@@ -615,7 +627,7 @@ class ProcedureShell(cmd.Cmd):
         try:
             self.p2.value = float(arg)
         except:
-            print('invalid value: setpoint unchanged.')
+            print(' invalid value: setpoint unchanged.')
 
         self.do_show()
         
@@ -624,7 +636,7 @@ class ProcedureShell(cmd.Cmd):
     def do_p3(self, arg):
         ''' the highest ph in a three point calibration'''
         if self.point_count < 3:
-            print('there is no point 3 in a two point calibration')
+            print(' there is no point 3 in a two point calibration')
         else:
             self.p3.value = float(arg)
 
@@ -632,10 +644,6 @@ class ProcedureShell(cmd.Cmd):
         
         return False
         
-    def do_return(self, arg):
-        ''' return to calibration'''
-        return True
-
     def prep(self, sensor):
         sensor.setpoints = []
         sensor.setpoints.append(self.p1.clone())
@@ -706,36 +714,48 @@ class CalShell(cmd.Cmd):
         self.sensors.cmdloop()
 
         return
+
+    def do_view(self, arg):
+        ''' view sensor coefficients'''
+
+        serialized = 'date = {}\n'.format(datetime.now())        
+        serialized += self.serialize()
+
+        print(serialized)
+        
+        return
     
     def do_save(self, arg):
-        ''' Save sensor coefficients'''
-        print('saveing sensors')
-        serialized = self.serialize()
-        
+        ''' save sensor coefficients'''
+
+        serialized = 'date = {}\n'.format(datetime.now())        
+        serialized += self.serialize()
+
+        fname = 'coefficients.toml'
+        print(' Saving sensor data to {}'.format(fname))
+        with open(fname, 'w') as fp:
+            fp.write(serialized)
+
+        print(' calibration data saved.')
+                
         return
 
     def do_exit(self, arg):
         ''' Done'''
-        print('exiting')
-        
-        exit()
+        print(' exiting')
+
+        return True
 
     def serialize(self):
-        serialized = 'date = {}\n'.format(datetime.now())
-        
         prefix = 'procedure'
+        
+        serialized = ''
         serialized += '{}\n'.format(self.procedure.serialize(prefix))
         
         prefix = 'sensors'
         serialized += '{}\n'.format(self.sensors.serialize(prefix))
 
-        print(serialized)
-
-        with open('coefficients.toml', 'w') as fs:
-            fs.write(serialized)
-        
-
-        return
+        return serialized
 
     
 if __name__ == '__main__':
@@ -743,4 +763,5 @@ if __name__ == '__main__':
     with smbus.SMBus(1) as bus:
         shell = CalShell(bus)
         shell.cmdloop()
-    
+
+    exit()
