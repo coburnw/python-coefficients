@@ -31,6 +31,32 @@ def getChar():
 
         return answer
 
+class Ansi():
+    def __init__(self):
+
+        self.Black = '\u001b[30m'
+        self.Red = '\u001b[31m'
+        self.Green = '\u001b[32m'
+        self.Yellow = '\u001b[33m'
+        self.Blue = '\u001b[34m'
+        self.Magenta= '\u001b[35m'
+        self.Cyan = '\u001b[36m'
+        self.White = '\u001b[37m'
+        
+        self.Reset = '\u001b[0m'
+
+        return
+
+    def red(self, text):
+        return '{}{}{}'.format(self.Red, text, self.Reset)
+    
+    def green(self, text):
+        return '{}{}{}'.format(self.Green, text, self.Reset)
+
+    def blue(self, text):
+        return '{}{}{}'.format(self.Blue, text, self.Reset)
+
+    
 class Coefficients():
     def __init__(self):
         # self.units = sensor_units
@@ -90,7 +116,7 @@ class SensorShell(cmd.Cmd):
         self.stream = fs.PhStream(a[self.phorp_channel], 'ph_cal', filter_constant=1)
 
         self.coefficients = Coefficients()
-        
+
         return
 
     @property
@@ -195,7 +221,154 @@ class EhSensorShell(SensorShell):
     @property
     def value(self):
         return self.coefficients.evaluate(self.raw_value)
+
     
+class Sensors(cmd.Cmd):
+    intro = 'Sensor Database, Blank line to return to previous menu...'
+
+    def __init__(self, i2c_bus, procedure, *kwargs):
+        super().__init__(*kwargs)
+        
+        self.bus = i2c_bus
+        self.procedure = procedure
+
+        self.sensors = []
+        self.sensor_index = 0
+
+        # known sensor types
+        self.types = ['eh', 'ph'] # 'therm'
+
+        self.ansi = Ansi()
+
+        return
+
+    @property
+    def prompt(self):
+        if len(self.sensors) == 0:
+            sensor_id = 'empty'
+        else:
+            sensor_id = self.ansi.red(self.sensor.id)
+            if sensor.is_calibrated:
+                sensor_id = self.ansi.green(self.sensor.id)
+
+        return '{}[{}]: '.format('db', sensor_id)
+
+    @property
+    def sensor(self):
+        return self.sensors[self.sensor_index]
+
+    def emptyline(self):
+        return True
+    
+    def do_new(self, sensor_id):
+        ''' new <id>. Create a new sensor instance'''
+        if len(sensor_id.strip()) == 0:
+            print(' missing sensor id.')
+            return
+        
+        sensor_type = input(' Enter sensor type [{}] :'.format(self.types))
+        
+        if sensor_type.lower() not in self.types:
+            print(' known types are {}. sensor not created.'.format(self.types))
+            return
+
+        print('creating new {} sensor {}'.format(sensor_type, sensor_id))
+        if sensor_type == 'ph':
+            sensor = PhSensorShell(self.bus, sensor_id)
+        elif sensor_type == 'eh':
+            sensor = EhSensorShell(self.bus, sensor_id)
+        elif sensor_type == 'therm':
+            sensor = None
+                                   
+        self.procedure.prep(sensor)
+        self.sensors.append(sensor)
+        self.sensor_index = len(self.sensors) - 1
+
+        sensor.do_show()
+        
+        return
+
+    def do_edit(self, arg):
+        ''' edit selected sensor'''
+        self.sensor.cmdloop()
+
+        return
+    
+    def do_list(self, arg):
+        ''' List sensors '''
+
+        if len(self.sensors) == 0:
+            print(' No sensors in list.  "new" to add a sensor.')
+            return
+        
+        i = 0
+        for sensor in self.sensors:
+            carret = ' '
+            if i == self.sensor_index:
+                carret = '*'
+
+            id = self.ansi.red(sensor.id)
+            if sensor.is_calibrated:
+                id = self.ansi.green(sensor.id)
+                
+            i += 1               
+            print(' {} {}'.format(carret, id))
+        
+        return
+
+    def do_prev(self, arg):
+        ''' retreat to previous sensor in list'''
+        self.sensor_index -= 1
+        if self.sensor_index < 0:
+            self.sensor_index = 0
+
+        #self.do_list('')
+        
+        return
+    
+    def do_next(self, arg):
+        ''' advance to next sensor in list'''
+        self.sensor_index += 1
+        if self.sensor_index > len(self.sensors):
+            self.sensor_index = len(self.sensors)
+
+        #self.do_list('')
+
+        return
+    
+    def do_cal(self, arg):
+        ''' Acquire sensor calibration data'''
+        self.procedure.run(self.sensor)
+            
+        return
+
+    def do_measure(self, arg):
+        ''' Sensor measurement in engineering units'''
+        self.sensor.update()
+
+        if self.sensor.is_calibrated:
+            print(' {} {}: {} {}'.format(self.sensor.raw_value, 'mV', self.sensor.value, self.sensor.units))
+        else:
+            print(' uncalibrated: {} {}'.format(self.sensor.raw_value, 'mV'))
+            
+        return
+    
+    def do_dump(self, arg):
+        ''' Dump sensor calibration parameters '''
+        self.sensor.dump()
+
+        return
+
+    def serialize(self, prefix):
+        # Sensors
+        serialized = '[{}]\n'.format(prefix)
+
+        for sensor in self.sensors:
+            serialized += '{}\n'.format(sensor.serialize(prefix))
+            
+        return serialized
+            
+        
 class CalibrationPoint(cmd.Cmd):
     intro = 'Calibration Point Configuration'
     prompt = 'point: '
@@ -472,144 +645,6 @@ class ProcedureShell(cmd.Cmd):
 
         return serialized
     
-class Sensors(cmd.Cmd):
-    intro = 'Sensor Database, Blank line to return to previous menu...'
-
-    def __init__(self, i2c_bus, procedure, *kwargs):
-        super().__init__(*kwargs)
-        
-        self.bus = i2c_bus
-        self.procedure = procedure
-
-        self.sensors = []
-        self.sensor_index = 0
-
-        # known sensor types
-        self.types = ['eh', 'ph'] # 'therm'
-
-        return
-
-    @property
-    def prompt(self):
-        if len(self.sensors) == 0:
-            sensor_id = 'empty'
-        else:
-            sensor_id = self.sensor.id
-            
-        return '{}[{}]: '.format('db', sensor_id)
-
-    @property
-    def sensor(self):
-        return self.sensors[self.sensor_index]
-
-    def emptyline(self):
-        return True
-    
-    def do_new(self, sensor_id):
-        ''' new <id>. Create a new sensor instance'''
-        if len(sensor_id.strip()) == 0:
-            print(' missing sensor id.')
-            return
-        
-        sensor_type = input(' Enter sensor type [{}] :'.format(self.types))
-        
-        if sensor_type.lower() not in self.types:
-            print(' known types are {}. sensor not created.'.format(self.types))
-            return
-
-        print('creating new {} sensor {}'.format(sensor_type, sensor_id))
-        if sensor_type == 'ph':
-            sensor = PhSensorShell(self.bus, sensor_id)
-        elif sensor_type == 'eh':
-            sensor = EhSensorShell(self.bus, sensor_id)
-        elif sensor_type == 'therm':
-            sensor = None
-                                   
-        self.procedure.prep(sensor)
-        self.sensors.append(sensor)
-        self.sensor_index = len(self.sensors) - 1
-
-        sensor.do_show()
-        
-        return
-
-    def do_edit(self, arg):
-        ''' edit selected sensor'''
-        self.sensor.cmdloop()
-
-        return
-    
-    def do_list(self, arg):
-        ''' List sensors '''
-
-        if len(self.sensors) == 0:
-            print(' No sensors in list.  "new" to add a sensor.')
-            return
-        
-        i = 0
-        for sensor in self.sensors:
-            carret = ' '
-            if i == self.sensor_index:
-                carret = '>'
-                
-            i += 1               
-            print(' {}{}'.format(carret, sensor.id))
-        
-        return
-
-    def do_prev(self, arg):
-        ''' retreat to previous sensor in list'''
-        self.sensor_index -= 1
-        if self.sensor_index < 0:
-            self.sensor_index = 0
-
-        self.do_list('')
-        
-        return
-    
-    def do_next(self, arg):
-        ''' advance to next sensor in list'''
-        self.sensor_index += 1
-        if self.sensor_index > len(self.sensors):
-            self.sensor_index = len(self.sensors)
-
-        self.do_list('')
-
-        return
-    
-    def do_cal(self, arg):
-        ''' Acquire sensor calibration data'''
-        self.procedure.run(self.sensor)
-            
-        return
-
-    def do_measure(self, arg):
-        ''' Sensor measurement in engineering units'''
-        self.sensor.update()
-
-        if self.sensor.is_calibrated:
-            print(' {} {}: {} {}'.format(self.sensor.raw_value, 'mV', self.sensor.value, self.sensor.units))
-        else:
-            print(' uncalibrated: {} {}'.format(self.sensor.raw_value, 'mV'))
-            
-        return
-    
-    def do_dump(self, arg):
-        ''' Dump sensor calibration parameters '''
-        self.sensor.dump()
-
-        return
-
-    def serialize(self, prefix):
-        # Sensors
-        serialized = '[{}]\n'.format(prefix)
-
-        for sensor in self.sensors:
-            serialized += '{}\n'.format(sensor.serialize(prefix))
-            
-        return serialized
-            
-        
 class CalShell(cmd.Cmd):
     intro = 'Welcome to the Calibration Shell'
     prompt = 'cal: '
@@ -663,6 +698,10 @@ class CalShell(cmd.Cmd):
         serialized += '{}\n'.format(self.sensors.serialize(prefix))
 
         print(serialized)
+
+        with open('coefficients.toml', 'w') as fs:
+            fs.write(serialized)
+        
 
         return
 
