@@ -1,7 +1,7 @@
 import cmd
 import sys
 import time
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 import smbus3 as smbus
 
@@ -32,6 +32,8 @@ def getChar():
         return answer
 
 class Ansi():
+    # https://www.lihaoyi.com/post/BuildyourownCommandLinewithANSIescapecodes.html
+    
     def __init__(self):
 
         self.Black = '\u001b[30m'
@@ -60,28 +62,40 @@ class Ansi():
 class Coefficients():
     def __init__(self):
         # self.units = sensor_units
+        self.is_valid = False
+
         self.degree = 1
         self.coefficients = dict()
 
+        self.expires = date.today()
         return
 
     def __len__(self):
         return len(self.coefficients)
     
     def generate(self, x1,y1, x2,y2):
+        self.is_valid = False
+        
         try:
-            self.coefficients['slope'] = (y1 - y2) / (x1 - x2)
-            self.coefficients['offset'] = y2 + self.coefficients['slope'] * x2
+            self.coefficients['slope'] = (y2 - y1) / (x2 - x1)
+            self.coefficients['offset'] = y1 - self.coefficients['slope'] * x1
+            
+            self.is_valid = True
         except ZeroDivisionError:
             self.coefficients['slope'] = 1.0
             self.coefficients['offset'] = 0.0
             
-        return
+        return self.is_valid
 
-    def evaluate(self, raw_value):
-        result = (raw_value + self.coefficients['offset']) / self.coefficients['slope']
+    def evaluate_x(self, x_value):
+        y = self.coefficients['slope'] * x_value + self.coefficients['offset']
         
-        return result
+        return y
+
+    def evaluate_y(self, y_value):
+        x = (y_value - self.coefficients['offset']) / self.coefficients['slope']
+        
+        return x
     
     def dump(self):
         for key, value in self.coefficients.items():
@@ -118,11 +132,18 @@ class SensorShell(cmd.Cmd):
 
         self.coefficients = Coefficients()
 
+        self.ansi = Ansi()
+
         return
 
     @property
     def prompt(self):
-        return 'sensor {}: '.format(self.id)
+        if self.coefficients.is_valid:
+            prompt = 'sensor {}: '.format(self.ansi.green(self.id))
+        else:
+            prompt = 'sensor {}: '.format(self.ansi.red(self.id))
+            
+        return prompt
 
     def preloop(self):
         self.do_show()
@@ -138,8 +159,48 @@ class SensorShell(cmd.Cmd):
         print('  Type: {}'.format(self.sensor_type))
         print('  pHorp address: 0x{:0x}'.format(self.phorp_address))
         print('  pHorp channel: {}'.format(self.phorp_channel))
+        print('  calibration expires: {}'.format(self.coefficients.expires))
         
         return False
+    
+    def do_eval(self, arg):
+        ''' evaluate a simulated sensor measurement'''
+        if not arg:
+            print( 'enter a value in volts.')
+            return
+
+        try:
+            raw_value = float(arg)
+        except:
+            raw_value = 0
+
+        if self.is_calibrated:
+            print(' {} {}: {} {}'.format(raw_value, 'mV', self.evaluate(raw_value), self.units))
+        else:
+            print(' uncalibrated: {} {}'.format(raw_value, 'mV'))
+
+        return
+        
+    def do_meas(self, arg):
+        ''' sensor measurement in engineering units'''
+        self.update()
+        
+        if self.is_calibrated:
+            print(' {} {}: {} {}'.format(self.raw_value, 'mV', self.value, self.units))
+        else:
+            print(' uncalibrated: {} {}'.format(self.raw_value, 'mV'))
+            
+        return
+    
+    def do_qual(self, arg):
+        ''' evaluate the quality of the sensor from its calibration constants '''
+        if not self.is_calibrated:
+            print(' Sensor must be calibrated to evaluate its quality.')
+            return
+        
+        self.quality()
+        
+        return
     
     def do_dump(self, arg):
         ''' dump sensor's coefficients and stats'''
@@ -158,15 +219,18 @@ class SensorShell(cmd.Cmd):
         self.coefficients.dump()
 
         return
+
+    @property
+    def type(self):
+        return self.sensor_type
+    
+    @property
+    def address(self):
+        return 'a1'
     
     @property
     def is_calibrated(self):
-        is_calibrated = False
-
-        if len(self.coefficients) > 0:
-            is_calibrated = True
-
-        return is_calibrated
+        return self.coefficients.is_valid
     
     @property
     def raw_value(self):
@@ -207,7 +271,20 @@ class PhSensorShell(SensorShell):
     
     @property
     def value(self):
-        return self.coefficients.evaluate(self.raw_value) + 7
+        return self.evaluate(self.raw_value)
+
+    def evaluate(self, raw_value):
+        return self.coefficients.evaluate_y(raw_value)
+
+    def quality(self):
+        slope = self.coefficients.coefficients['slope']
+        offset = self.coefficients.evaluate_x(7.0)
+        
+        print(' slope = {} mV/unit '.format(round(slope*1000,3)))
+        print(' offset = {} mV'.format(round(offset*1000,3)))
+
+        return
+
     
 class EhSensorShell(SensorShell):
     def __init__(self, i2c_bus, sensor_id, *kwargs):
@@ -220,7 +297,7 @@ class EhSensorShell(SensorShell):
     
     @property
     def value(self):
-        return self.coefficients.evaluate(self.raw_value)
+        return self.coefficients.evaluate_y(self.raw_value)
 
     
 class Sensors(cmd.Cmd):
@@ -311,7 +388,8 @@ class Sensors(cmd.Cmd):
         self.sensors[sensor_key] = sensor
         self.sensor_index = self.last_index
 
-        sensor.do_show()
+        #sensor.do_show()
+        sensor.cmdloop()
         
         return
 
@@ -357,9 +435,13 @@ class Sensors(cmd.Cmd):
             id = self.ansi.red(sensor.id)
             if sensor.is_calibrated:
                 id = self.ansi.green(sensor.id)
-                
+
+            type = sensor.type
+            address = sensor.address
+            expires = sensor.coefficients.expires
+            
             i += 1               
-            print(' {} {}'.format(carret, id))
+            print(' {} {} {} {} {}'.format(carret, id, type, address, expires))
         
         return
 
@@ -383,23 +465,6 @@ class Sensors(cmd.Cmd):
         ''' acquire sensor calibration data'''
         self.procedure.run(self.sensor)
             
-        return
-
-    def do_meas(self, arg):
-        ''' sensor measurement in engineering units'''
-        self.sensor.update()
-
-        if self.sensor.is_calibrated:
-            print(' {} {}: {} {}'.format(self.sensor.raw_value, 'mV', self.sensor.value, self.sensor.units))
-        else:
-            print(' uncalibrated: {} {}'.format(self.sensor.raw_value, 'mV'))
-            
-        return
-    
-    def do_dump(self, arg):
-        ''' Dump sensor calibration parameters '''
-        self.sensor.dump()
-
         return
 
     def serialize(self, prefix):
@@ -657,11 +722,17 @@ class ProcedureShell(cmd.Cmd):
 
         for setpoint in sensor.setpoints:
             setpoint.run(sensor)
-        
+            
         p1 = sensor.setpoints[0]
         p2 = sensor.setpoints[1]
 
-        sensor.coefficients.generate(p1.value-7,p1.mean, p2.value-7,p2.mean)
+        sensor.coefficients.generate(p1.value,p1.mean, p2.value,p2.mean)
+        if sensor.coefficients.is_valid:
+            duration = timedelta(days=180)
+            sensor.coefficients.expires = date.today() + duration
+            
+        #sensor.coefficients.generate(4.0,0.180, 8.0,-0.061)
+            
         sensor.coefficients.dump()
 
         return
