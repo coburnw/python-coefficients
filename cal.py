@@ -1,9 +1,11 @@
 import cmd
 import sys
 import time
-from datetime import date, datetime, timedelta
+# from datetime import date, datetime, timedelta
+import datetime
 
 import smbus3 as smbus
+import tomli
 
 import phorp
 import frame_streams as fs
@@ -61,31 +63,41 @@ class Ansi():
     
 class Coefficients():
     def __init__(self):
-        # self.units = sensor_units
-        self.is_valid = False
 
         self.degree = 1
         self.coefficients = dict()
 
-        self.expires = date.today()
+        # self.expires = date.today() - timedelta(days=1)
+        self.timestamp = datetime.date(1970, 1, 1)
+        self.interval = datetime.timedelta(days=0)
+
         return
 
     def __len__(self):
         return len(self.coefficients)
+
+    @property
+    def due_date(self):
+        return self.timestamp + self.interval
+
+    @property
+    def is_valid(self):
+        return self.due_date > datetime.date.today()
     
     def generate(self, x1,y1, x2,y2):
-        self.is_valid = False
-        
+        self.timestamp = datetime.date(1970, 1, 1)
+
+        is_valid = False
         try:
             self.coefficients['slope'] = (y2 - y1) / (x2 - x1)
             self.coefficients['offset'] = y1 - self.coefficients['slope'] * x1
             
-            self.is_valid = True
+            is_valid = True
         except ZeroDivisionError:
-            self.coefficients['slope'] = 1.0
+            self.coefficients['slope'] = 0.00001
             self.coefficients['offset'] = 0.0
             
-        return self.is_valid
+        return is_valid
 
     def evaluate_x(self, x_value):
         y = self.coefficients['slope'] * x_value + self.coefficients['offset']
@@ -93,7 +105,11 @@ class Coefficients():
         return y
 
     def evaluate_y(self, y_value):
-        x = (y_value - self.coefficients['offset']) / self.coefficients['slope']
+        slope = self.coefficients['slope']
+        if slope == 0:
+            slope = 0.00001
+            
+        x = (y_value - self.coefficients['offset']) / slope
         
         return x
     
@@ -103,15 +119,28 @@ class Coefficients():
 
         return
     
-    def serialize(self, prefix):
-        serialized = '[{}]\n'.format(prefix)
-        serialized += 'degree = {}\n'.format(self.degree)
+    def pack(self, prefix):
+        package = '[{}]\n'.format(prefix)
+        package += 'degree = {}\n'.format(self.degree)
+        package += 'timestamp = "{}"\n'.format(self.timestamp.isoformat())
+        package += 'interval = "{}"\n'.format(self.interval.days)
         
+        package += '[{}.{}]\n'.format(prefix, 'coefficients')
         for key, value in self.coefficients.items():
-            serialized += '{} = {}\n'.format(key, value)
+            package += '{} = {}\n'.format(key, value)
 
-        return serialized
+        return package
 
+    def unpack(self, package):
+        print('  loading coefficients')
+        self.degree = package['degree']
+        self.timestamp = datetime.date.fromisoformat(package['timestamp'])
+        self.interval = datetime.timedelta(days=int(package['interval']))
+        
+        for name, value in  package['coefficients'].items():
+            self.coefficients[name] = value
+        
+        return
     
 class SensorShell(cmd.Cmd):
     intro = 'Sensor Configuration.  Blank line to return to previous menu.'
@@ -124,7 +153,7 @@ class SensorShell(cmd.Cmd):
         self.sensor_type = 'none'
         self.id = sensor_id.strip()
         
-        self.phorp_address = 0x68
+        self.phorp_address = 0x68 # deployed
         self.phorp_channel = 2
 
         a = phorp.PhorpX4(self.bus, 'a')
@@ -159,7 +188,7 @@ class SensorShell(cmd.Cmd):
         print('  Type: {}'.format(self.sensor_type))
         print('  pHorp address: 0x{:0x}'.format(self.phorp_address))
         print('  pHorp channel: {}'.format(self.phorp_channel))
-        print('  calibration expires: {}'.format(self.coefficients.expires))
+        print('  calibration due: {}'.format(self.coefficients.due_date))
         
         return False
     
@@ -213,7 +242,7 @@ class SensorShell(cmd.Cmd):
         return
 
     def dump(self):
-        for setpoint in self.setpoints:
+        for setpoint in self.setpoints.values():
             print(setpoint.dump())
             
         self.coefficients.dump()
@@ -240,24 +269,43 @@ class SensorShell(cmd.Cmd):
     def value(self):
         return self.stream.value
 
-    def serialize(self, prefix):
-        serialized = ''
-        serialized += 'id = "{}"\n'.format(self.id)
-        serialized += 'type = "{}"\n'.format(self.sensor_type)
-        serialized += 'chan_addr = "{}.{}"\n'.format(self.phorp_address, self.phorp_channel)
-        serialized += '\n'
+    def pack(self, prefix):
+        # sensor
+        package = ''
+        package += 'id = "{}"\n'.format(self.id)
+        package += 'type = "{}"\n'.format(self.sensor_type)
+        package += 'chan_addr = "{}.{}"\n'.format(self.phorp_address, self.phorp_channel)
+        package += '\n'
         
         if self.is_calibrated:
             my_prefix = '{}.{}'.format(prefix, 'coefficients')
-            serialized += self.coefficients.serialize(my_prefix)
+            package += self.coefficients.pack(my_prefix)
 
             my_prefix = '{}.{}'.format(prefix, 'setpoints')
-            for setpoint in self.setpoints:
+            for setpoint in self.setpoints.values():
                 setpoint_prefix = '{}.{}'.format(my_prefix, setpoint.name)
-                serialized += setpoint.serialize(setpoint_prefix)
-                serialized += '\n'
+                package += '{}\n'.format(setpoint.pack(setpoint_prefix))
 
-        return serialized
+        return package
+
+    def unpack(self, package):
+        # sensor
+        self.id = package['id']
+        self.sensor_type = package['type']
+        self.chan_addr = package['chan_addr']
+
+        if 'coefficients' in package:
+            self.coefficients = Coefficients()
+            self.coefficients.unpack(package['coefficients'])
+            
+        if 'setpoints' in package:
+            for sp in package['setpoints'].values():
+                print('  loading setpoint {}'.format(sp['name']))
+                setpoint = CalibrationPoint('','','')
+                setpoint.unpack(sp)
+                self.setpoints[setpoint.name] = setpoint
+            
+        return
 
     
 class PhSensorShell(SensorShell):
@@ -303,12 +351,13 @@ class EhSensorShell(SensorShell):
 class Sensors(cmd.Cmd):
     intro = 'Sensor Database, blank line to return to previous menu...'
 
-    def __init__(self, i2c_bus, procedure, *kwargs):
+    def __init__(self, i2c_bus, procedures, *kwargs):
         super().__init__(*kwargs)
         
         self.bus = i2c_bus
-        self.procedure = procedure
-
+        self.procedures = procedures
+        self.procedure = None # fix this
+        
         self.sensors = dict()
         self.sensor_index = 0
 
@@ -371,21 +420,9 @@ class Sensors(cmd.Cmd):
                
         sensor_type = input(' Enter sensor type [{}] :'.format(self.types)).strip()
         
-        if sensor_type.lower() not in self.types:
-            print(' known types are {}. sensor not created.'.format(self.types))
-            return
-
-        print(' creating new {} sensor {}'.format(sensor_type, sensor_id))
-        if sensor_type == 'ph':
-            sensor = PhSensorShell(self.bus, sensor_id)
-        elif sensor_type == 'eh':
-            sensor = EhSensorShell(self.bus, sensor_id)
-        elif sensor_type == 'therm':
-            sensor = None
-
-        self.procedure.prep(sensor)
-               
-        self.sensors[sensor_key] = sensor
+        sensor = self.new_sensor(sensor_type, sensor_id)
+        
+        self.sensors[sensor_key] = sensor        
         self.sensor_index = self.last_index
 
         #sensor.do_show()
@@ -393,6 +430,25 @@ class Sensors(cmd.Cmd):
         
         return
 
+    def new_sensor(self, sensor_type, sensor_id):
+        if sensor_type.lower() not in self.types:
+            print(' known types are {}. sensor not created.'.format(self.types))
+            return
+
+        print(' creating new {} sensor {}'.format(sensor_type, sensor_id))
+        if sensor_type == 'ph':
+            sensor = PhSensorShell(self.bus, sensor_id)
+            self.procedure = self.procedures['ph']
+        elif sensor_type == 'eh':
+            sensor = EhSensorShell(self.bus, sensor_id)
+            self.procedure = self.procedures['ph']
+        elif sensor_type == 'therm':
+            sensor = None
+
+        self.procedure.prep(sensor)
+
+        return sensor
+        
     def do_del(self, arg=None):
         ''' delete sensor. del<ret> selected sensor, del <sensor_id> '''
         if arg:
@@ -438,10 +494,10 @@ class Sensors(cmd.Cmd):
 
             type = sensor.type
             address = sensor.address
-            expires = sensor.coefficients.expires
+            due_date = sensor.coefficients.due_date
             
             i += 1               
-            print(' {} {} {} {} {}'.format(carret, id, type, address, expires))
+            print(' {} {} {} {} {}'.format(carret, id, type, address, due_date))
         
         return
 
@@ -467,22 +523,35 @@ class Sensors(cmd.Cmd):
             
         return
 
-    def serialize(self, prefix):
+    def pack(self, prefix):
         # Sensors
-        serialized = '[{}]\n'.format(prefix)
+        package = '[{}]\n'.format(prefix)
 
         for key, sensor in self.sensors.items():
             sensor_prefix = '{}.{}'.format(prefix, key)
-            serialized += '[{}]\n'.format(sensor_prefix)
-            serialized += '{}\n'.format(sensor.serialize(sensor_prefix))
+            package += '[{}]\n'.format(sensor_prefix)
+            package += '{}\n'.format(sensor.pack(sensor_prefix))
             
-        return serialized
+        return package
             
-        
+    def unpack(self, package):
+        #print(package)
+        for sensor_key, template in package.items():
+            if sensor_key in self.sensors.keys():
+                print(' sensor already exists. ignoring.')
+            else:
+                sensor = self.new_sensor(template['type'], template['id'])
+                sensor.unpack(template)
+                self.sensors[sensor_key] = sensor
+                #print(sensor)
+            
+        return
+
+    
 class CalibrationPoint(cmd.Cmd):
     intro = 'Calibration Point Configuration'
     prompt = 'point: '
-    
+
     def __init__(self, name, units, value, *kwargs):
         super().__init__(*kwargs)
 
@@ -550,7 +619,7 @@ class CalibrationPoint(cmd.Cmd):
         
         if key != ' ':
             print('run canceled')
-            return
+            return False
 
         while True:
             # sys.stdout.write("\x1b[A")  # move cursor up one line
@@ -591,28 +660,36 @@ class CalibrationPoint(cmd.Cmd):
             if key != ' ':
                 break
                             
-        return
+        return True
 
-    def serialize(self, prefix):
-        # CalibrationPoint
-        serialized = '[{}]\n'.format(prefix)
+    def pack(self, prefix):
+        # Calibration SetPoint
+        package = '[{}]\n'.format(prefix)
         
-        serialized += 'name = "{}"\n'.format(self.name)
-        serialized += 'units = "{}"\n'.format(self.units)
-        serialized += 'value = {}\n'.format(self.value)
+        package += 'name = "{}"\n'.format(self.name)
+        package += 'units = "{}"\n'.format(self.units)
+        package += 'value = {}\n'.format(self.value)
 
-        if self.n > 0:
-            serialized += 'n = {}\n'.format(self.n)
-            serialized += 'mean = {}\n'.format(self.mean)
-            serialized += 'variance = {}\n'.format(self.variance)
-            serialized += 'standard_deviation = {}\n'.format(self.standard_deviation)
+        # if self.n > 0:
+        #     package += 'n = {}\n'.format(self.n)
+        #     package += 'mean = {}\n'.format(self.mean)
+        #     package += 'variance = {}\n'.format(self.variance)
+        #     package += 'standard_deviation = {}\n'.format(self.standard_deviation)
             
-        return serialized
+        return package
 
+    def unpack(self, package):
+        # calibration setpoint
+        self.name = package['name']
+        self.units = package['units']
+        self.value = package['value']
+
+        return
     
+
 class ProcedureShell(cmd.Cmd):
     intro = 'Procedure Configuration'
-    prompt = 'procedure: '
+    prompt = 'pH: '
 
     def __init__(self, *kwargs):
         super().__init__(kwargs)
@@ -621,12 +698,27 @@ class ProcedureShell(cmd.Cmd):
 
         self.units = 'ph'
         self.point_count = 2
-        self.p1 = CalibrationPoint('p1', 'pH', 4.0)
-        self.p2 = CalibrationPoint('p2', 'pH', 7.0)
-        self.p3 = CalibrationPoint('p3', 'pH', 10.0)
+
+        # the default setpoint settings.
+        self.setpoints = dict()
+        self.setpoints['p1'] = CalibrationPoint('p1', 'pH', 4.0)
+        self.setpoints['p2'] = CalibrationPoint('p2', 'pH', 7.0)
+        self.setpoints['p3'] = CalibrationPoint('p3', 'pH', 10.0)
 
         return
-        
+
+    @property
+    def p1(self):
+        return self.setpoints['p1']
+
+    @property
+    def p2(self):
+        return self.setpoints['p2']
+
+    @property
+    def p3(self):
+        return self.setpoints['p3']
+    
     def preloop(self):
         self.do_show()
 
@@ -709,62 +801,118 @@ class ProcedureShell(cmd.Cmd):
         return False
         
     def prep(self, sensor):
-        sensor.setpoints = []
-        sensor.setpoints.append(self.p1.clone())
-        sensor.setpoints.append(self.p2.clone())
+        sensor.setpoints = dict()
+        sensor.setpoints[self.p1.name] = self.p1.clone()
+        sensor.setpoints[self.p2.name] = self.p2.clone()
         if self.point_count == 3:
-            sensor.setpoints.append(self.p3.clone())
+            sensor.setpoints[self.p2.name] = self.p3.clone()
 
+        sensor.coefficients.interval = datetime.timedelta(days=180)
+        
         return
     
     def run(self, sensor):
         print(' running {} point calibration on sensor {}'.format(self.point_count, sensor.id))
 
-        for setpoint in sensor.setpoints:
-            setpoint.run(sensor)
-            
-        p1 = sensor.setpoints[0]
-        p2 = sensor.setpoints[1]
+        ok = True
+        for setpoint in sensor.setpoints.values():
+            if not setpoint.run(sensor):
+                ok = False
+                break
 
-        sensor.coefficients.generate(p1.value,p1.mean, p2.value,p2.mean)
-        if sensor.coefficients.is_valid:
-            duration = timedelta(days=180)
-            sensor.coefficients.expires = date.today() + duration
+        if ok:
+            p1 = sensor.setpoints[self.p1.name]
+            p2 = sensor.setpoints[self.p2.name]
+
+            if sensor.coefficients.generate(p1.value,p1.mean, p2.value,p2.mean):
+                # prompt here to accept...
+                sensor.coefficients.timestamp = datetime.date.today() #+ duration
             
-        #sensor.coefficients.generate(4.0,0.180, 8.0,-0.061)
+            #sensor.coefficients.generate(4.0,0.180, 8.0,-0.061)
             
         sensor.coefficients.dump()
 
         return
 
-    def serialize(self, prefix):
+    def pack(self, prefix):
         # Procedure
-        serialized = '[{}]\n'.format(prefix)
+        package = ''
+        package += 'point_count = {}\n'.format(self.point_count)
         
-        serialized += '# Default Calibration Setpoints\n'
-        serialized += 'point_count = {}\n'.format(self.point_count)
+        my_prefix = '{}.{}'.format(prefix, 'setpoints')
+        for setpoint in self.setpoints.values():
+            setpoint_prefix = '{}.{}'.format(my_prefix, setpoint.name)
+            package += '{}\n'.format(setpoint.pack(setpoint_prefix))
+            
+        return package
 
-        point_prefix = '{}.{}'.format(prefix, 'p1')
-        serialized += '{}\n'.format(self.p1.serialize(point_prefix))
-        
-        point_prefix = '{}.{}'.format(prefix, 'p2')
-        serialized += '{}\n'.format(self.p2.serialize(point_prefix))
-        
-        point_prefix = '{}.{}'.format(prefix, 'p3')
-        serialized += '{}'.format(self.p3.serialize(point_prefix))
+    def unpack(self, package):
+        # procedure
+        self.point_count = package['point_count']
 
-        return serialized
+        if 'setpoints' in package:        
+            for sp in package['setpoints'].values():
+                setpoint = CalibrationPoint('','','')
+                setpoint.unpack(sp)
+                self.setpoints[setpoint.name] = setpoint
+            
+        return
+
+    
+class Procedures(cmd.Cmd):
+    intro = 'Sensor calibration procedures. ? for help.'
+    prompt = 'procedures: '
+
+    def __init__(self, *kwargs):
+        super().__init__(*kwargs)
+
+        self.procedures = dict()
+        self.procedures['ph'] = ProcedureShell()
+        
+        return
+
+    def __getitem__(self, key):
+        return self.procedures[key]
+    
+    def emptyline(self):
+        return True
+    
+    def do_ph(self, arg):
+        ''' ph<cr> edit pH procedure default parameters''' 
+        self.procedures['ph'].cmdloop()
+
+        return False
+
+    def pack(self, prefix):
+        package = ''
+        
+        for key, procedure in self.procedures.items():
+            my_prefix = '{}.{}'.format(prefix, key)
+            package += '[{}]\n'.format(my_prefix)
+            package += '{}\n'.format(procedure.pack(my_prefix))
+            
+        return package
+
+    def unpack(self, package):
+        for key, template in package.items():
+            procedure = ProcedureShell()
+            procedure.unpack(template)
+            self.procedures[key] = procedure
+            
+        return
+
     
 class CalShell(cmd.Cmd):
-    intro = 'Welcome to the Calibration Shell'
-    prompt = 'cal: '
+    intro = 'Welcome to the Calibration Shell. ? for help.'
+    prompt = 'shell: '
 
     def __init__(self, i2c_bus, *kwargs):
         super().__init__(*kwargs)
 
         self.bus = i2c_bus
-        self.procedure = ProcedureShell()
-        self.sensors = Sensors(self.bus, self.procedure)
+        #self.procedure = ProcedureShell()
+        self.procedures = Procedures()
+        self.sensors = Sensors(self.bus, self.procedures)
 
         self.suffix = '.toml'
         self.filename = 'coefficients{}'.format(self.suffix)
@@ -776,9 +924,9 @@ class CalShell(cmd.Cmd):
         
         return False
     
-    def do_procedure(self, arg):
+    def do_procedures(self, arg):
         ''' procedure configuration '''
-        self.procedure.cmdloop()
+        self.procedures.cmdloop()
         
         return
     
@@ -791,30 +939,42 @@ class CalShell(cmd.Cmd):
     def do_view(self, arg):
         ''' view sensor coefficients'''
 
-        serialized = 'date = {}\n'.format(datetime.now())        
-        serialized += self.serialize()
+        package = 'date = {}\n'.format(datetime.datetime.now())        
+        package += self.pack()
 
-        print(serialized)
+        print(package)
         
         return
     
     def do_save(self, arg):
         ''' save sensor coefficients'''
 
-        serialized = 'date = {}\n'.format(datetime.now())        
-        serialized += self.serialize()
+        package = self.pack()
 
         filename = self.get_filename()
         
         print(' Saving sensor data to {}'.format(filename))
         with open(filename, 'w') as fp:
-            fp.write(serialized)
+            fp.write(package)
 
         print(' calibration data saved to {}.'.format(filename))
         self.filename = filename
         
         return
 
+    def do_load(self, arg):
+        ''' load sensor coefficients file'''
+
+        filename = self.get_filename()
+        package = ''
+        print(' Loading sensor data from {}'.format(filename))
+        with open(filename, 'rb') as fp:
+            package = tomli.load(fp)
+
+        self.unpack(package)
+        
+        return
+    
     def do_exit(self, arg):
         ''' Done'''
         print(' exiting')
@@ -837,17 +997,28 @@ class CalShell(cmd.Cmd):
 
         return filename
     
-    def serialize(self):
-        prefix = 'procedure'
-        
-        serialized = ''
-        serialized += '{}\n'.format(self.procedure.serialize(prefix))
+    def pack(self):
+        package = 'date = {}\n'.format(datetime.datetime.now())        
+
+        prefix = 'procedures'
+        package += '{}\n'.format(self.procedures.pack(prefix))
         
         prefix = 'sensors'
-        serialized += '{}\n'.format(self.sensors.serialize(prefix))
+        package += '{}\n'.format(self.sensors.pack(prefix))
 
-        return serialized
+        return package
 
+    def unpack(self, package):
+        print(package['date'])
+
+        if 'procedures' in package:
+            self.procedures.unpack(package['procedures'])
+
+        if 'sensors' in package:
+            self.sensors.unpack(package['sensors'])
+
+        return
+    
     
 if __name__ == '__main__':
     
