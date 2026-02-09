@@ -42,7 +42,7 @@ class Shell(shell.Shell):
         super().__init__(*kwargs)
 
         self.procedures = procedure.Procedures(procedures)
-        self.sensors = sensor.Sensors(self.procedures)
+        self.sensors = sensor.SensorsShell(self.procedures)
 
         self.suffix = '.toml'
         self.filename = 'coefficients{}'.format(self.suffix)

@@ -91,7 +91,7 @@ class SensorShell(shell.Shell):
         return self.sensor.id
     
     @property
-    def config(self):
+    def config(self): # i think this is confusing.
         return self.sensor
     
     @property
@@ -252,7 +252,7 @@ class SensorShell(shell.Shell):
         return
 
     
-class Sensors(shell.Shell):
+class SensorsShell(shell.Shell):
     intro = 'Sensor Database, blank line to return to previous menu...'
 
     def __init__(self, procedures, *kwargs):
@@ -399,7 +399,7 @@ class Sensors(shell.Shell):
 
             type = sensor.type
             address = sensor.config.address
-            due_date = sensor.config.coefficients.due_date
+            due_date = sensor.config.calibration.due_date
             
             i += 1               
             print(' {} {} {} {} {}'.format(carret, id, type, address, due_date))
