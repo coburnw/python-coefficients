@@ -44,9 +44,19 @@ class PhorpStream(calcrib.Stream):
 
         return
 
+    def validate_address(self, address):
+        board, chan_idx = self.split_address(address)
+        
+        if board in 'abcdefg' and chan_idx in '1234':
+            self.address = board + chan_idx
+        else:
+            return' invalid address. board_id is a-g, channel_id is 1-4 as in "b3"'
+
+        return
+        
     def split_address(self, address):
         board_index = address[0].lower()
-        channel_index = int(address[1])
+        channel_index = address[1]
 
         return (board_index, channel_index)
 
@@ -65,12 +75,12 @@ class PhorpStream(calcrib.Stream):
     @property
     def raw_value(self):
         ''' returns the result of the last update() as a float'''
-        return self._raw_value
+        return self._raw_value * 1000
     
     @property
     def raw_units(self):
         ''' returns a string'''
-        return 'V'
+        return 'mV'
     
     
 class EhProcedure(calcrib.Procedure):
@@ -107,28 +117,28 @@ class PhProcedure(calcrib.Procedure):
         super().__init__(streams, *kwargs)
 
         self.stream_type = 'PhorpStream'
-
+        self.stream_address = 'a2'
+        
         self.type = 'ph'
         self.name = 'pH'
-        self.raw_units = 'mV'
-        self.units = 'pH'
+        self.scaled_units = 'pH'
 
         # the default setpoint settings.
-        self.setpoints['p1'] = calcrib.Setpoint('p1', self.units, 4.0)
-        self.setpoints['p2'] = calcrib.Setpoint('p2', self.units, 7.0)
-        self.setpoints['p3'] = calcrib.Setpoint('p3', self.units, 10.0)
+        self.setpoints['p1'] = calcrib.Setpoint('p1', self.scaled_units, 4.0)
+        self.setpoints['p2'] = calcrib.Setpoint('p2', self.scaled_units, 7.0)
+        self.setpoints['p3'] = calcrib.Setpoint('p3', self.scaled_units, 10.0)
 
         return
 
     def quality(self, sensor):
-        if not  sensor.config.coefficients.is_valid:
+        if not  sensor.calibration.is_valid:
             print(' Sensor out of calibration: ')
 
-        slope = sensor.config.coefficients.coefficients['slope']
-        offset = sensor.config.coefficients.evaluate_x(7.0)
+        slope = sensor.calibration.coefficients['slope']
+        offset = sensor.calibration.evaluate_x(7.0)
 
-        print(' slope = {} mV/unit '.format(round(slope*1000,3)))
-        print(' offset = {} mV'.format(round(offset*1000,3)))
+        print(' slope = {} {}/unit '.format(round(slope,3), 'mV'))
+        print(' offset = {} {}'.format(round(offset,3), 'mV'))
 
         return
 

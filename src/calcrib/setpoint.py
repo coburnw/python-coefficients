@@ -17,8 +17,8 @@ class Setpoint(shell.Shell):
         if units.lower() not in self.possible_units:
             pass
         
-        self.units = units
-        self.value = value
+        self.scaled_units = units
+        self.scaled_value = value
 
         self.sample_period = 0.2
         self.update_period = 1
@@ -31,14 +31,14 @@ class Setpoint(shell.Shell):
     def do_show(self, arg=None):
         ''' print present values'''
         print(' Calibration Point')
-        print('  Units:   {}'.format(self.units))
-        print('  Value:   {} {}'.format(self.value, self.units))
+        print('  Units:   {}'.format(self.scaled_units))
+        print('  Value:   {} {}'.format(self.scaled_value, self.scaled_units))
             
         return False
     
     def do_value(self, arg):
         ''' the first (lowest pH) in a two or three point calibration'''
-        self.value = float(arg)
+        self.scaled_value = float(arg)
 
         self.do_show()
         return False
@@ -49,27 +49,27 @@ class Setpoint(shell.Shell):
 
     @property
     def mean(self):
-        return self.stats.mean()
+        return round(self.stats.mean(), 3)
 
     @property
     def variance(self):
-        return self.stats.variance()
+        return round(self.stats.variance(), 3)
 
     @property
     def standard_deviation(self):
-        return self.stats.standard_deviation()
+        return round(self.stats.standard_deviation(), 3)
 
     def clone(self):
-        return(Setpoint(self.name, self.units, self.value))
+        return(Setpoint(self.name, self.scaled_units, self.scaled_value))
 
     def dump(self):
-        str = '{}{}: n={}, mean={}, var={}, sd={}'.format(self.value, self.units, self.n, self.mean, self.variance, self.standard_deviation)
+        str = '{}{}: n={}, mean={}, var={}, sd={}'.format(self.scaled_value, self.scaled_units, self.n, self.mean, self.variance, self.standard_deviation)
 
         return str
     
     def run(self, sensor):
         # setpoint run
-        prompt = '  ready {} {} Calibration Solution. press <space> to begin, other to cancel'.format(self.units, self.value)
+        prompt = '  ready {} {} Calibration Solution. press <space> to begin, other to cancel'.format(self.scaled_units, self.scaled_value)
         print(prompt)
         key = self.get_char()
         
@@ -82,7 +82,7 @@ class Setpoint(shell.Shell):
             # blankline = ' ' * len(prompt)
             # print(blankline, end='\r')
 
-            print('   ({} {}): '.format(self.units, self.value), end='')
+            print('   ({} {}): '.format(self.scaled_units, self.scaled_value), end='')
             self.stats.clear()
             
             sample_time = time.time()
@@ -93,7 +93,7 @@ class Setpoint(shell.Shell):
             
                 now = time.time()
                 if now > update_time:
-                    print(sensor.raw_value, end=', ')
+                    print(round(sensor.raw_value, 3), end=', ')
                     sys.stdout.flush()
                     update_time += self.update_period
 
@@ -108,7 +108,7 @@ class Setpoint(shell.Shell):
             print()
             print('     {}'.format(self.stats.synopsis))
 
-            prompt = '  {} {} Calibration Buffer. press <space> to repeat, other to advance'.format(self.units, self.value)
+            prompt = '  {} {} Calibration Buffer. press <space> to repeat, other to advance'.format(self.scaled_units, self.scaled_value)
             print(prompt) #, end=''
             # sys.stdout.flush()
             key = self.get_char()
@@ -120,11 +120,12 @@ class Setpoint(shell.Shell):
 
     def pack(self, prefix):
         # Calibration SetPoint
-        package = '[{}]\n'.format(prefix)
+        package = ''
+        package += '[{}]\n'.format(prefix)
         
         package += 'name = "{}"\n'.format(self.name)
-        package += 'units = "{}"\n'.format(self.units)
-        package += 'value = {}\n'.format(self.value)
+        package += 'scaled_units = "{}"\n'.format(self.scaled_units)
+        package += 'scaled_value = {}\n'.format(self.scaled_value)
 
         # if self.n > 0:
         #     package += 'n = {}\n'.format(self.n)
@@ -137,8 +138,8 @@ class Setpoint(shell.Shell):
     def unpack(self, package):
         # calibration setpoint
         self.name = package['name']
-        self.units = package['units']
-        self.value = package['value']
+        self.scaled_units = package['scaled_units']
+        self.scaled_value = package['scaled_value']
 
         return
 

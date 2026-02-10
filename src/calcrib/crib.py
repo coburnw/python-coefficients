@@ -68,11 +68,10 @@ class Shell(shell.Shell):
 
         return
 
-    def do_view(self, arg):
+    def do_dump(self, arg):
         ''' view sensor configuration'''
 
-        package = 'date = {}\n'.format(datetime.datetime.now())        
-        package += self.pack()
+        package = self.pack()
 
         print(package)
         
@@ -133,10 +132,10 @@ class Shell(shell.Shell):
         package = 'date = {}\n'.format(datetime.datetime.now())        
 
         prefix = 'procedures'
-        package += '{}\n'.format(self.procedures.pack(prefix))
+        package += self.procedures.pack(prefix)
         
         prefix = 'sensors'
-        package += '{}\n'.format(self.sensors.pack(prefix))
+        package += self.sensors.pack(prefix)
 
         return package
 

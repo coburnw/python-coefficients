@@ -12,10 +12,11 @@ class Procedure(shell.Shell):
         super().__init__(*kwargs)
 
         self.streams = streams
-        self.stream_type = None
-        self.stream_address = 'a2'
         
-        self.units = ''
+        self.stream_type = None
+        self.stream_address = None
+        
+        self.scaled_units = None
         self.point_count = 2
         self.setpoints = dict()
 
@@ -52,12 +53,12 @@ class Procedure(shell.Shell):
         print('  Stream Type :  {}'.format(self.stream_type))
         print('  Stream Address:  {}'.format(self.stream_address))
         print()
-        print('  Units:  {}'.format(self.units))
+        print('  Units:  {}'.format(self.scaled_units))
         print('  Spread: {} point'.format(self.point_count))
-        print('   P1:    {} {}'.format(self.p1.value, self.p1.units))
-        print('   P2:    {} {}'.format(self.p2.value, self.p2.units))
+        print('   P1:    {} {}'.format(self.p1.scaled_value, self.p1.scaled_units))
+        print('   P2:    {} {}'.format(self.p2.scaled_value, self.p2.scaled_units))
         if self.point_count == 3:
-            print('   P3:   {} {}'.format(self.p3.value, self.p3.units))
+            print('   P3:   {} {}'.format(self.p3.scaled_value, self.p3.scaled_units))
 
         print('  Interval: {} days'.format(self.interval.days))
         
@@ -112,7 +113,7 @@ class Procedure(shell.Shell):
         ''' p1 <n> The first (lowest value) in a two or three point calibration'''
         
         try:
-            self.p1.value = float(arg)
+            self.p1.scaled_value = float(arg)
         except:
             print(' invalid value: setpoint unchanged.')
 
@@ -124,7 +125,7 @@ class Procedure(shell.Shell):
         ''' p2 <n> The middle or highest value in a two or three point calibration'''
         
         try:
-            self.p2.value = float(arg)
+            self.p2.scaled_value = float(arg)
         except:
             print(' invalid value: setpoint unchanged.')
 
@@ -138,7 +139,7 @@ class Procedure(shell.Shell):
         if self.point_count < 3:
             print(' there is no point 3 in a two point calibration')
         else:
-            self.p3.value = float(arg)
+            self.p3.scaled_value = float(arg)
 
         self.do_show()
         
@@ -151,22 +152,21 @@ class Procedure(shell.Shell):
         if self.point_count == 3:
             sensor.setpoints[self.p2.name] = self.p3.clone()
 
-        sensor.sensor.name = self.name
-        sensor.sensor.raw_units = self.raw_units
-        sensor.sensor.units = self.units
-        sensor.sensor.calibration.interval = self.interval
+        sensor.name = self.name
+        sensor.calibration.scaled_units = self.scaled_units
+        sensor.calibration.interval = self.interval
 
         stream = self.streams[self.stream_type]() # create a new stream instance
-        sensor.sensor.connect(stream, self.stream_address) # and override deployed address
+        sensor.connect(stream, self.stream_address) # and override deployed address
         
         return
     
     def run(self, sensor):
-        print(' running {} point calibration on sensor {}'.format(self.point_count, sensor.sensor.id))
+        print(' running {} point calibration on sensor {}'.format(self.point_count, sensor.id))
 
         ok = True
         for setpoint in sensor.setpoints.values():
-            if not setpoint.run(sensor.sensor):
+            if not setpoint.run(sensor):
                 ok = False
                 break
 
@@ -174,18 +174,18 @@ class Procedure(shell.Shell):
             p1 = sensor.setpoints[self.p1.name]
             p2 = sensor.setpoints[self.p2.name]
 
-            if sensor.sensor.calibration.generate(p1.value,p1.mean, p2.value,p2.mean):
+            if sensor.calibration.generate(p1.scaled_value,p1.mean, p2.scaled_value,p2.mean):
                 # prompt here to accept...
-                sensor.sensor.calibration.timestamp = datetime.date.today()
+                sensor.calibration.timestamp = datetime.date.today()
             
-        sensor.sensor.calibration.dump()
+        sensor.calibration.dump()
 
         return
 
     def pack(self, prefix):
         # Procedure
         package = ''
-        package += 'units = "{}"\n'.format(self.units)
+        package += 'units = "{}"\n'.format(self.scaled_units)
         package += 'stream_type = "{}"\n'.format(self.stream_type)
         package += 'stream_address = "{}"\n'.format(self.stream_address)
         package += 'interval = {}\n'.format(self.interval.days)
@@ -194,13 +194,14 @@ class Procedure(shell.Shell):
         my_prefix = '{}.{}'.format(prefix, 'setpoints')
         for setpoint in self.setpoints.values():
             setpoint_prefix = '{}.{}'.format(my_prefix, setpoint.name)
-            package += '{}\n'.format(setpoint.pack(setpoint_prefix))
+            package += '\n'
+            package += setpoint.pack(setpoint_prefix)
         
         return package
 
     def unpack(self, package):
         # procedure
-        self.units = package['units']
+        self.scaled_units = package['units']
         self.stream_type = package['stream_type']
         self.stream_address = package['stream_address']
         self.interval = datetime.timedelta(days=package['interval'])
@@ -219,7 +220,6 @@ class Procedures(shell.Shell):
     intro = 'Sensor calibration procedures. ? for help.'
     prompt = 'procedures: '
 
-    # def __init__(self, procedures, streams, *kwargs):
     def __init__(self, procedures, *kwargs):
         super().__init__(*kwargs)
 
@@ -260,17 +260,18 @@ class Procedures(shell.Shell):
         
         for key, procedure in self.procedures.items():
             my_prefix = '{}.{}'.format(prefix, key)
+            package += '\n'
             package += '[{}]\n'.format(my_prefix)
-            package += '{}\n'.format(procedure.pack(my_prefix))
+            package += procedure.pack(my_prefix)
             
         return package
 
     def unpack(self, package):
         for key, template in package.items():
             if key == 'ph':
-                procedure = PhProcedure()
+                procedure = self.procedures[key] #PhProcedure()
             elif key == 'eh':
-                procedure = EhProcedure()
+                procedure = self.procedures[key] #EhProcedure()
             else:
                 print('unrecognized procedure {}. ignoring'.format(key))
                 

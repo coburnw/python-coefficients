@@ -1,3 +1,5 @@
+import collections
+
 from . import shell
 from . import coefficients
 from . import setpoint as sp
@@ -7,7 +9,7 @@ class Stream():
         self.type = type
 
         return
-    
+
     def connect(self, address):
         ''' initialize an input'''
         raise NotImplemented
@@ -15,6 +17,11 @@ class Stream():
     def update(self):
         ''' complete a conversion'''
         raise NotImplemented
+    
+    # @property
+    # def address(self):
+    #     ''' returns the current address '''
+    #     raise NotImplemented
     
     @property
     def raw_value(self):
@@ -37,9 +44,10 @@ class Sensor():
         # deployed sensor values
         self.name = ''
         self.location = ''
-        self.address = 'a1'
+        self.address = 'ND'
 
         self.calibration = coefficients.Coefficients()
+        self.setpoints = dict()
 
         return
 
@@ -49,7 +57,10 @@ class Sensor():
         if address is None:
             address = self.address
 
-        self.stream.connect(address)
+        if address == 'ND':
+            print(' Sensor.connect(): NO DEPLOYED ADDRESS')
+        else:
+            self.stream.connect(address)
         
         return
     
@@ -58,8 +69,16 @@ class Sensor():
         return self.stream.raw_value
 
     @property
+    def raw_units(self):
+        return self.stream.raw_units
+    
+    @property
     def scaled_value(self):
         return self.evaluate(self.raw_value)
+
+    @property
+    def scaled_units(self):
+        return self.calibration.scaled_units
 
     def evaluate(self, raw_value):
         return self.calibration.evaluate_y(raw_value)
@@ -73,36 +92,40 @@ class Sensor():
         # sensor
         package = ''
         package += 'id = "{}"\n'.format(self.id)
-        package += 'type = "{}"\n'.format(self.sensor.type)
-        package += 'address = "{}"\n'.format(self.sensor.address)
-        package += '\n'
+        package += 'type = "{}"\n'.format(self.type)
+
+        package += 'name = "{}"\n'.format(self.name)
+        package += 'location = "{}"\n'.format(self.location)
+        package += 'address = "{}"\n'.format(self.address)
         
-        if self.is_calibrated:
+        if self.calibration.is_valid:
             my_prefix = '{}.{}'.format(prefix, 'calibration')
-            package += self.sensor.calibration.pack(my_prefix)
             package += '\n'
+            package += self.calibration.pack(my_prefix)
 
             my_prefix = '{}.{}'.format(prefix, 'setpoints')
             for setpoint in self.setpoints.values():
                 setpoint_prefix = '{}.{}'.format(my_prefix, setpoint.name)
-                package += '{}\n'.format(setpoint.pack(setpoint_prefix))
-                # package += '\n'
+                package += '\n'
+                package += setpoint.pack(setpoint_prefix)
 
         return package
 
     def unpack(self, package):
         # sensor
         self.id = package['id']
-        self.sensor.type = package['type']
-        self.sensor.address = package['address']
+        self.type = package['type']
+        
+        self.name = package.get('name', '')
+        self.location = package.get('location', '')
+        self.address = package.get('address', 'ND')
 
-        if 'coefficients' in package:
-            self.sensor.calibration = coefficients.Coefficients()
-            self.sensor.calibration.unpack(package['calibration'])
+        if 'calibration' in package:
+            self.calibration = coefficients.Coefficients()
+            self.calibration.unpack(package['calibration'])
             
         if 'setpoints' in package:
             for values in package['setpoints'].values():
-                print('  loading setpoint {}'.format(values['name']))
                 setpoint = sp.Setpoint('','','')
                 setpoint.unpack(values)
                 self.setpoints[setpoint.name] = setpoint
@@ -114,12 +137,12 @@ class SensorShell(shell.Shell):
     intro = 'Sensor Configuration.  Blank line to return to previous menu.'
     # prompt = 'sensor: '
 
-    def __init__(self, sensor_type, sensor_id, *kwargs):
+    def __init__(self, sensor, *kwargs):
         super().__init__(*kwargs)
 
-        self.sensor = Sensor(sensor_type, sensor_id)
+        self.sensor = sensor
         
-        self.setpoints = None  # a dict() configured by Procedure.prep()
+        #self.setpoints = None  # a dict() configured by Procedure.prep()
         
         return
 
@@ -130,10 +153,6 @@ class SensorShell(shell.Shell):
     @property
     def id(self):
         return self.sensor.id
-    
-    @property
-    def config(self): # i think this is confusing.
-        return self.sensor
     
     @property
     def prompt(self):
@@ -160,21 +179,20 @@ class SensorShell(shell.Shell):
         print('  Location: {}'.format(self.sensor.location))
 
         print('  Stream Type:  {}'.format(self.sensor.stream.type))
-        print('  Stream Address:  {}'.format(self.sensor.address))
-        print('  calibration due: {}'.format(self.sensor.calibration.due_date))
+        print('  Deployed Address: {}'.format(self.sensor.address)) # deployed address
+        print('  calibration due:  {}'.format(self.sensor.calibration.due_date))
         
         return False
 
     def do_address(self, arg=None):
         ''' address <addr> enter deployed pHorp address of sensor'''
 
-        board, channel = self.sensor.split_address(arg)
-        
-        if board in 'abcdefg' and channel in '1234':
-            self.sensor.address = board + channel
+        err_str = self.sensor.stream.validate_address(arg)
+        if err_str:
+            print(self.red(err_str))
         else:
-            print(' invalid address. board_id is a-g, channel_id is 1-4 as in "b3"')
-
+            self.sensor.address = self.sensor.stream.address
+            
         self.do_show()
         
         return False
@@ -197,18 +215,8 @@ class SensorShell(shell.Shell):
         
         return False
 
-    def qual(self, arg):
-        ''' evaluate the quality of the sensor from its calibration constants '''
-        if not self.is_calibrated:
-            print(' Sensor must be calibrated to evaluate its quality.')
-            return
-        
-        self.quality()
-        
-        return False
-    
     def dump(self):
-        for setpoint in self.setpoints.values():
+        for setpoint in self.sensor.setpoints.values():
             print(setpoint.dump())
             
         self.sensor.calibration.dump()
@@ -219,17 +227,17 @@ class SensorShell(shell.Shell):
         ''' sensor measurement in engineering units'''
         self.sensor.update()
         
-        if self.is_calibrated:
-            print(' {} {}: {} {}'.format(self.sensor.raw_value, 'mV', self.sensor.value, self.sensor.units))
+        if self.sensor.calibration.is_valid:
+            print(' {} {}: {} {}'.format(round(self.sensor.raw_value, 3), self.sensor.raw_units, round(self.sensor.scaled_value, 3), self.sensor.scaled_units))
         else:
-            print(' uncalibrated: {} {}'.format(self.sensor.raw_value, 'mV'))
+            print(' uncalibrated: {} {}'.format(round(self.sensor.raw_value, 3), self.sensor.raw_units))
             
         return
     
     def eval(self, arg):
         ''' evaluate a simulated sensor measurement'''
         if not arg:
-            print( 'enter a value in volts.')
+            print( 'enter a value in {}.'.format(self.sensor.raw_units))
             return
 
         try:
@@ -237,60 +245,45 @@ class SensorShell(shell.Shell):
         except:
             raw_value = 0
 
-        if self.is_calibrated:
-            print(' {} {}: {} {}'.format(raw_value, 'mV', self.sensor.evaluate(raw_value), self.sensor.units))
+        if self.sensor.calibration.is_valid:
+            print(' {} {}: {} {}'.format(round(raw_value,3), self.sensor.raw_units, round(self.sensor.evaluate(raw_value), 3), self.sensor.scaled_units))
         else:
-            print(' uncalibrated: {} {}'.format(raw_value, 'mV'))
+            print(' uncalibrated: {} {}'.format(round(raw_value,3), self.sensor.raw_units))
 
-        return False
-        
-    @property
-    def type(self):
-        return self.sensor.type
-    
-    @property
-    def is_calibrated(self):
-        return self.sensor.calibration.is_valid
+        return False        
     
 
-
-class Sensors():
+class Sensors(collections.UserDict):
     def __init__(self, package=None):
-        self.sensors = dict()
+        super().__init__()
+        # self.data contains our dict()
 
         if package is not None:
             self.unpack(package)
             
         return
 
-    def __len__(self):
-        return len(self.sensors)
-    
-    def __getitem__(self, key):
-        return self.sensors[key]
-
     def pack(self, prefix):
         # Sensors
-        package = '[{}]\n'.format(prefix)
+        package = ''
 
-        for key, sensor in self.sensors.items():
+        for key, sensor in self.data.items():
             sensor_prefix = '{}.{}'.format(prefix, key)
+            package += '\n'
             package += '[{}]\n'.format(sensor_prefix)
-            package += '{}\n'.format(sensor.pack(sensor_prefix))
+            package += sensor.pack(sensor_prefix)
             
         return package
 
     def unpack(self, package):
-        #print(package)
         for sensor_key, template in package.items():
-            if sensor_key in self.sensors.keys():
+            if sensor_key in self.keys():
                 print(' Error: sensor already exists. ignoring.')
             else:
-                sensor = self.new_sensor(template['type'], template['id'])
+                sensor = Sensor(template['type'], template['id'])
                 sensor.unpack(template)
-                self.sensors[sensor_key] = sensor
-                #print(sensor)
-            
+                self.data[sensor_key] = sensor
+                
         return
 
     
@@ -307,6 +300,14 @@ class SensorsShell(shell.Shell):
 
         return
 
+    @property
+    def first_index(self):
+        return 0
+    
+    @property
+    def last_index(self):
+        return len(self.sensors) - 1
+    
     @property
     def sensor(self):
         if self.sensor_index > self.last_index:
@@ -334,19 +335,11 @@ class SensorsShell(shell.Shell):
             sensor_id = 'empty'
         else:
             sensor_id = self.red(self.sensor.id)
-            if self.sensor.is_calibrated:
+            if self.sensor.calibration.is_valid:
                 sensor_id = self.green(self.sensor.id)
 
         return '{}[{}]: '.format(self.cyan('db'), sensor_id)
 
-    @property
-    def first_index(self):
-        return 0
-    
-    @property
-    def last_index(self):
-        return len(self.sensors) - 1
-    
     def to_key(self, id):
         id = id.strip().lower().replace(' ', '_')
         
@@ -378,20 +371,20 @@ class SensorsShell(shell.Shell):
             return
 
         sensor = self.new_sensor(sensor_type, sensor_key)
+        sensor_shell = SensorShell(sensor)
         
-        sensor.do_show()
+        sensor_shell.do_show()
         
         return
 
     def new_sensor(self, sensor_type, sensor_id):
         print(' creating new {} sensor {}'.format(sensor_type, sensor_id))
 
-        sensor = SensorShell(sensor_type, sensor_id)
+        sensor = Sensor(sensor_type, sensor_id)
         
         self.sensors[sensor_id] = sensor
         self.sensor_index = self.last_index
 
-        # self.deploy.prep(sensor)
         self.procedure.prep(sensor)
 
         return sensor
@@ -418,7 +411,7 @@ class SensorsShell(shell.Shell):
             
     def do_edit(self, arg):
         ''' edit selected sensor'''
-        self.sensor.cmdloop()
+        SensorShell(self.sensor).cmdloop()
 
         return
     
@@ -436,12 +429,12 @@ class SensorsShell(shell.Shell):
                 carret = '*'
 
             id = self.red(sensor.id)
-            if sensor.is_calibrated:
+            if sensor.calibration.is_valid:
                 id = self.green(sensor.id)
 
             type = sensor.type
-            address = sensor.config.address
-            due_date = sensor.config.calibration.due_date
+            address = sensor.address
+            due_date = sensor.calibration.due_date
             
             i += 1               
             print(' {} {} {} {} {}'.format(carret, id, type, address, due_date))
@@ -473,9 +466,9 @@ class SensorsShell(shell.Shell):
     def do_meas(self, arg):
         ''' meas <mV> Evaluates mV in engineering units, sensor value if blank.'''
         if len(arg.strip()) == 0:
-            self.sensor.meas(arg)
+            SensorShell(self.sensor).meas(arg)
         else:
-            self.sensor.eval(arg)
+            SensorShell(self.sensor).eval(arg)
         
         return False
 
@@ -485,3 +478,17 @@ class SensorsShell(shell.Shell):
         
         return False
     
+    def pack(self, prefix):
+        package = self.sensors.pack(prefix)
+        
+        return package
+    
+    def unpack(self, package):
+        self.sensors.unpack(package)
+
+        for sensor in self.sensors.values():
+            # deploy.prep(sensor)
+            proc = self.procedures[sensor.type]
+            proc.prep(sensor)
+
+        return

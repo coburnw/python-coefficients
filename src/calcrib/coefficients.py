@@ -13,6 +13,7 @@ class Coefficients():
         self.timestamp = datetime.date(1970, 1, 1)
         self.interval = datetime.timedelta(days=0)
 
+        self.scaled_units = ''
         return
 
     def __len__(self):
@@ -57,15 +58,17 @@ class Coefficients():
     
     def dump(self):
         for key, value in self.coefficients.items():
-            print(key, value)
+            print(key, round(value, 3))
 
         return
     
     def pack(self, prefix):
-        package = '[{}]\n'.format(prefix)
+        package = ''
+        package += '[{}]\n'.format(prefix)
         package += 'degree = {}\n'.format(self.degree)
         package += 'timestamp = "{}"\n'.format(self.timestamp.isoformat())
         package += 'interval = "{}"\n'.format(self.interval.days)
+        package += 'scaled_units = "{}"\n'.format(self.scaled_units)
         
         package += '[{}.{}]\n'.format(prefix, 'coefficients')
         for key, value in self.coefficients.items():
@@ -74,10 +77,10 @@ class Coefficients():
         return package
 
     def unpack(self, package):
-        print('  loading coefficients')
         self.degree = package['degree']
         self.timestamp = datetime.date.fromisoformat(package['timestamp'])
         self.interval = datetime.timedelta(days=int(package['interval']))
+        self.scaled_units = package['scaled_units']
         
         for name, value in  package['coefficients'].items():
             self.coefficients[name] = value
