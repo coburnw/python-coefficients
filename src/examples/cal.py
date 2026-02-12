@@ -197,8 +197,13 @@ if __name__ == '__main__':
             while True:
                 for sensor in project.sensors.values():
                     sensor.update()
-                    print(sensor.name, sensor.scaled_value, sensor.scaled_units)
+                    val = round(sensor.scaled_value, 1)
+                    parm = '{} {} {}, '.format(sensor.name, val, sensor.scaled_units)
+                    print(parm, end='')
+                    # sys.stdout.flush()
                     time.sleep(0.5)
+
+                print('')
             
 
     exit()

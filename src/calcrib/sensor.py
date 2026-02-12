@@ -37,8 +37,6 @@ class Sensor():
         self.type = sensor_type
         self.id = sensor_id.strip()
 
-        print('Sensor.__init__()')
-        
         self.stream_type = None
         
         # configured by procedure/deploy.prep()
@@ -121,22 +119,15 @@ class Sensor():
         # sensor
         self.id = package['id']
         self.type = package['type']
-        
+
         self.name = package.get('name', '')
         self.location = package.get('location', '')
         self.stream_type = package.get('stream_type')
         self.address = package.get('address', 'ND')
 
+        # print('unpacking sensor {}'.format(self.name))
         if 'calibration' in package:
             self.calibration = calibration.Calibration(package['calibration'])
-            #parcel = package['calibration']
-            
-            # if parcel['type'] == 'PolynomialEquation':
-            #     self.calibration = polynomial.PolynomialEquation(parcel)
-            # elif parcel['type'] == 'PhorpThermistorEquation':
-            #     self.calibration = thermistor.PhorpThermistorEquation(parcel)
-            # else:
-            #     print('sensor.unpack() Unrecognized calibration equation: {}'.format(parcel['type']))
                 
         if 'setpoints' in package:
             for values in package['setpoints'].values():

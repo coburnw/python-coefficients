@@ -7,6 +7,7 @@ class EquationFactory():
         return
 
     def new(self, package):
+        # print('creating new {}'.format(package['type']))
         if package['type'] == 'BetaThermistorEquation':
             equation = thermistor.BetaThermistorEquation(package)
         elif package['type'] == 'PhorpThermistorEquation':
