@@ -3,6 +3,8 @@ import datetime
 from . import procedure
 from . import setpoint as sp
 from . import equation
+from . import quantity
+
 
 class PolynomialProcedure(procedure.ProcedureShell):
     def __init__(self, streams, *kwargs):
@@ -14,16 +16,16 @@ class PolynomialProcedure(procedure.ProcedureShell):
         return
 
     @property
-    def p1(self):
-        return self.parameters['p1']
+    def sp1(self):
+        return self.parameters['sp1']
 
     @property
-    def p2(self):
-        return self.parameters['p2']
+    def sp2(self):
+        return self.parameters['sp2']
 
     @property
-    def p3(self):
-        return self.parameters['p3']
+    def sp3(self):
+        return self.parameters['sp3']
         
     # def do_spread(self, arg):
     #     ''' spread <n> Calibration point count, 2 or 3'''
@@ -40,11 +42,11 @@ class PolynomialProcedure(procedure.ProcedureShell):
         
     #     return False
 
-    def do_p1(self, arg):
-        ''' p1 <n> The first (lowest value) in a two or three point calibration'''
+    def do_sp1(self, arg):
+        ''' sp1 <n> The first (lowest value) in a two or three point calibration'''
         
         try:
-            self.p1.scaled_value = float(arg)
+            self.sp1.target_quantity.value = float(arg)
         except:
             print(' invalid value: setpoint unchanged.')
 
@@ -52,11 +54,11 @@ class PolynomialProcedure(procedure.ProcedureShell):
         
         return False
         
-    def do_p2(self, arg):
-        ''' p2 <n> The middle or highest value in a two or three point calibration'''
+    def do_sp2(self, arg):
+        ''' sp2 <n> The middle or highest value in a two or three point calibration'''
         
         try:
-            self.p2.scaled_value = float(arg)
+            self.sp2.target_quantity.value = float(arg)
         except:
             print(' invalid value: setpoint unchanged.')
 
@@ -64,13 +66,13 @@ class PolynomialProcedure(procedure.ProcedureShell):
         
         return False
         
-    def do_p3(self, arg):
-        ''' p3 <n> The highest value in a three point calibration'''
+    def do_sp3(self, arg):
+        ''' sp3 <n> The highest value in a three point calibration'''
         
         if self.point_count < 3:
             print(' there is no point 3 in a two point calibration')
         else:
-            self.p3.scaled_value = float(arg)
+            self.sp3.target_quantity.value = float(arg)
 
         self.do_show()
         
@@ -79,10 +81,10 @@ class PolynomialProcedure(procedure.ProcedureShell):
     def show(self):
         print('  Units:  {}'.format(self.scaled_units))
         print('  Spread: {} point'.format(self.point_count))
-        print('   P1:    {} {}'.format(self.p1.scaled_value, self.p1.scaled_units))
-        print('   P2:    {} {}'.format(self.p2.scaled_value, self.p2.scaled_units))
+        print('   {}'.format(self.sp1.target_quantity))
+        print('   {}'.format(self.sp2.target_quantity))
         if self.point_count == 3:
-            print('   P3:   {} {}'.format(self.p3.scaled_value, self.p3.scaled_units))
+            print('   SP3:   {} {}'.format(self.sp3.target_quantity))
 
         return
 
@@ -92,10 +94,10 @@ class PolynomialProcedure(procedure.ProcedureShell):
         
         # give sensor its own copy of paramters
         sensor.parameters = dict()
-        sensor.parameters[self.p1.name] = self.p1.clone()
-        sensor.parameters[self.p2.name] = self.p2.clone()
+        sensor.parameters[self.sp1.name] = self.sp1.clone()
+        sensor.parameters[self.sp2.name] = self.sp2.clone()
         if self.point_count == 3:
-            sensor.parameters[self.p2.name] = self.p3.clone()
+            sensor.parameters[self.sp3.name] = self.sp3.clone()
 
         super().prep(sensor)
 
@@ -107,17 +109,21 @@ class PolynomialProcedure(procedure.ProcedureShell):
 
         # run thru the setpoints
         for parameter in sensor.parameters.values():
-            # if parameter.name in ['p1', 'p2', 'p3']:
-            if not parameter.run(sensor):
-                ok = False
-                break
+            if parameter.name in ['sp1', 'sp2', 'sp3']:
+                if not parameter.run(sensor):
+                    ok = False
+                    break
 
         if ok:
-            p1 = sensor.parameters['p1']
-            p2 = sensor.parameters['p2']
-
-            ok = sensor.calibration.equation.generate(p1.scaled_value,p1.mean, p2.scaled_value,p2.mean)
-                
+            sensor.calibration.timestamp = datetime.date(1970, 1, 1)
+            
+            p1 = sensor.parameters['sp1']
+            p2 = sensor.parameters['sp2']
+            ok = sensor.calibration.equation.generate(p1, p2)
+            
+            if ok:
+                sensor.calibration.timestamp = datetime.date.today()
+    
         return ok
 
     def pack(self, prefix):
@@ -138,7 +144,7 @@ class PolynomialProcedure(procedure.ProcedureShell):
 
         if 'parameters' in package:        
             for template in package['parameters'].values():
-                parameter = sp.Setpoint('','','')
+                parameter = sp.StreamSetpoint(quantity.Quantity())
                 parameter.unpack(template)
                 self.parameters[parameter.name] = parameter
             
@@ -161,21 +167,24 @@ class PolynomialEquation(equation.Equation):
     def __len__(self):
         return len(self.coefficients)
 
-    def generate(self, x1,y1, x2,y2):
-        self.timestamp = datetime.date(1970, 1, 1)
-
+    def generate(self, p1, p2):
+        #print(p1.target_quantity, p1.measured_quantity)
+        #print(p2.target_quantity, p2.measured_quantity)
+        
         is_valid = False
         try:
-            self.coefficients[1] = (y2 - y1) / (x2 - x1)
-            self.coefficients[0] = y1 - self.coefficients[1] * x1
+            dx = p2.target_quantity.value - p1.target_quantity.value
+            dy = p2.measured_quantity.value - p1.measured_quantity.value
+            self.coefficients[1] = dy / dx
+            self.coefficients[0] = p1.measured_quantity.value - self.coefficients[1] * p1.target_quantity.value
             
             is_valid = True
         except ZeroDivisionError:
             self.coefficients[1] = 0.00001
             self.coefficients[0] = 0.0
-            
-        return is_valid
 
+        return is_valid
+    
     def evaluate_x(self, x_value):
         y = self.coefficients[1] * x_value + self.coefficients[0]
         

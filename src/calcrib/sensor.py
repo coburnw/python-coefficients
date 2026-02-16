@@ -1,11 +1,10 @@
 import collections
 
 from . import shell
-from . import setpoint as sp
 
 from . import calibration
-from . import polynomial
-from . import thermistor
+#from . import polynomial
+#from . import thermistor
 
 class Stream():
     def __init__(self, type):
@@ -111,13 +110,6 @@ class Sensor():
             package += '\n'
             package += self.calibration.pack(my_prefix)
 
-            if len(self.setpoints) > 0:
-                my_prefix = '{}.{}'.format(prefix, 'setpoints')
-                for setpoint in self.setpoints.values():
-                    setpoint_prefix = '{}.{}'.format(my_prefix, setpoint.name)
-                    package += '\n'
-                    package += setpoint.pack(setpoint_prefix)
-
         return package
 
     def unpack(self, package):
@@ -136,12 +128,6 @@ class Sensor():
         if 'calibration' in package:
             self.calibration = calibration.Calibration(package['calibration'])
                 
-        if 'setpoints' in package:
-            for values in package['setpoints'].values():
-                setpoint = sp.Setpoint('','','')
-                setpoint.unpack(values)
-                self.setpoints[setpoint.name] = setpoint
-            
         return
 
 

@@ -1,7 +1,6 @@
 import datetime
 
 from . import shell
-from . import setpoint as sp
 
 class ProcedureShell(shell.Shell):
     intro = 'Generic Procedure Configuration'
@@ -102,9 +101,9 @@ class ProcedureShell(shell.Shell):
     def run(self, sensor):
         if self.cal(sensor):
             # prompt here to accept...
-            sensor.calibration.timestamp = datetime.date.today()
-            
-        sensor.calibration.show()
+            pass
+        
+        # sensor.calibration.show()
 
         return
 
@@ -121,7 +120,7 @@ class ProcedureShell(shell.Shell):
 
     def unpack(self, package):
         # procedure
-        ### self.scaled_units = package['units'] dont override our own type
+        ### self.procedure_type = package['procedure_type'] dont override our own type
         self.scaled_units = package['units']
         self.stream_type = package['stream_type']
         self.stream_address = package['stream_address']
@@ -200,7 +199,7 @@ class Procedures(shell.Shell):
 
     def unpack(self, package):
         for key, template in package.items():
-            print('unpacking {}'.format(key))
+            print('unpacking procedure: {}'.format(key))
             
             if key in self.procedures.keys():
                 procedure = self.procedures[key]

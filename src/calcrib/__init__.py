@@ -2,8 +2,10 @@ from .crib import Shell
 from .crib import Deploy
 
 from .sensor import Stream
-from .setpoint import Setpoint
-from .parameter import Constant
+
+from .setpoint import ConstantSetpoint
+from .setpoint import StreamSetpoint
+from .quantity import Quantity
 
 from .polynomial import PolynomialEquation
 from .polynomial import PolynomialProcedure

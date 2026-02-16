@@ -3,17 +3,93 @@ import time
 
 from . import shell
 from . import statistics as rs
-from . import parameter
+from . import quantity
 
-class Setpoint(parameter.ParameterShell):
-    def __init__(self, name, units, value, *kwargs):
-        super().__init__(name, units, value, *kwargs)
-
+class SetpointFactory():
+    def __init__(self, package):
+        return
+        
+class Setpoint(shell.Shell):
+    def __init__(self, target_quantity=None, measured_quantity=None):
         self.title = 'Calibration Setpoint'
 
-        self.sample_period = 0.2
+        # make this required 
+        if target_quantity is None:
+            target_quantity = quantity.Quantity()
+            
+        if measured_quantity is None:
+            measured_quantity = quantity.Quantity()
+            
+        self.target_quantity = target_quantity
+        self.measured_quantity = measured_quantity
+        
+        return
+
+    @property
+    def type(self):
+        return self.__class__.__name__
+    
+    @property
+    def name(self):
+        return self.target_quantity.name.lower()
+    
+    def pack(self, prefix):
+        # Calibration SetPoint
+
+        package = ''
+        package += '[{}]\n'.format(prefix)        
+        package += 'type = "{}"\n'.format(self.type)
+        
+        my_prefix= '{}.{}'.format(prefix, 'target_quantity')
+        package += '{}'.format(self.target_quantity.pack(my_prefix))
+
+        return package
+
+    def unpack(self, package):
+        # calibration setpoint
+        self.target_quantity.unpack(package['target_quantity'])
+        
+        return
+
+class ConstantSetpoint(Setpoint):
+    def __init__(self, target_quantity=None, measured_quantity=None):
+        super().__init__(target_quantity, measured_quantity)
+
+        return
+
+    @property
+    def mean(self):
+        return self.measured_quantity.value
+
+    def clone(self):
+        scaled = self.target_quantity.clone()
+        
+        raw = None
+        if self.measured_quantity:
+            raw = self.measured_quantity.clone()
+            
+        return(ConstantSetpoint(scaled, raw))
+
+    def run(self, sensor):
+        # Its a constant. Nothing to do...
+        
+        return True
+    
+# class PromptSetpoint(Setpoint):
+#     def __init__(self, scaled_parameter):
+#         self.scaled_parameter = scaled_parameter
+
+#         return
+
+class StreamSetpoint(Setpoint):
+    def __init__(self, target_quantity=None, measured_quantity=None):
+        super().__init__(target_quantity, measured_quantity)
+        
+        self.title = 'Calibration Setpoint'
+        
+        self.sample_period = 0.1
         self.update_period = 1
-        self.number_of_samples = 30
+        self.number_of_samples = 50
         
         self.stats = rs.RunningStats()
         
@@ -36,16 +112,25 @@ class Setpoint(parameter.ParameterShell):
         return round(self.stats.standard_deviation(), 3)
 
     def clone(self):
-        return(Setpoint(self.name, self.scaled_units, self.scaled_value))
+        scaled = self.target_quantity.clone()
+        
+        raw = None
+        if self.measured_quantity:
+            raw = self.measured_quantity.clone()
+            
+        return(StreamSetpoint(scaled, raw))
 
     def dump(self):
-        str = '{}{}: n={}, mean={}, var={}, sd={}'.format(self.scaled_value, self.scaled_units, self.n, self.mean, self.variance, self.standard_deviation)
+        str = '{}: n={}, mean={}, var={}, sd={}'.format(self.target_quantity, self.n, self.mean, self.variance, self.standard_deviation)
 
         return str
-    
+
+    # evaluate?
     def run(self, sensor):
         # setpoint run
-        prompt = '  ready {} {} Calibration Solution. press <space> to begin, other to cancel'.format(self.scaled_units, self.scaled_value)
+        self.measured_quantity = sensor.stream.measured_quantity.clone()
+        
+        prompt = '  ready {} Calibration Solution. press <space> to begin, <x> to cancel'.format(self.target_quantity)
         print(prompt)
         key = self.get_char()
         
@@ -54,18 +139,14 @@ class Setpoint(parameter.ParameterShell):
             return False
 
         while True:
-            # sys.stdout.write("\x1b[A")  # move cursor up one line
-            # blankline = ' ' * len(prompt)
-            # print(blankline, end='\r')
-
-            print('   ({} {}): '.format(self.scaled_units, self.scaled_value), end='')
+            print('   ({}): '.format(self.target_quantity), end='')
             self.stats.clear()
             
             sample_time = time.time()
             update_time = sample_time
             for i in range(self.number_of_samples):
                 sensor.update()
-                self.stats.push(sensor.raw_value)
+                self.stats.push(sensor.stream.measured_quantity.value * 1000) #fix sensor
             
                 now = time.time()
                 if now > update_time:
@@ -84,41 +165,15 @@ class Setpoint(parameter.ParameterShell):
             print()
             print('     {}'.format(self.stats.synopsis))
 
-            prompt = '  {} {} Calibration Buffer. press <space> to repeat, other to advance'.format(self.scaled_units, self.scaled_value)
+            prompt = '  {} Calibration Buffer. <space> to repeat, <enter> to advance'.format(self.target_quantity)
             print(prompt) #, end=''
             # sys.stdout.flush()
             key = self.get_char()
         
             if key != ' ':
+                self.measured_quantity.value = self.stats.mean()
                 break
-                            
-        return True
-
-    def pack(self, prefix):
-        # Calibration SetPoint
-
-        # package = super().pack(prefix)
-        package = ''
-        package += '[{}]\n'.format(prefix)
-        
-        package += 'name = "{}"\n'.format(self.name)
-        package += 'scaled_units = "{}"\n'.format(self.scaled_units)
-        package += 'scaled_value = {}\n'.format(self.scaled_value)
-
-        # if self.n > 0:
-        #     package += 'n = {}\n'.format(self.n)
-        #     package += 'mean = {}\n'.format(self.mean)
-        #     package += 'variance = {}\n'.format(self.variance)
-        #     package += 'standard_deviation = {}\n'.format(self.standard_deviation)
             
-        return package
-
-    def unpack(self, package):
-        # calibration setpoint
-        self.name = package['name']
-        self.scaled_units = package['scaled_units']
-        self.scaled_value = package['scaled_value']
-
-        return
+        return True
 
     

@@ -1,8 +1,10 @@
 import math
+import datetime
 
-from . import parameter
 from . import procedure
+from . import quantity
 from . import equation
+
 
 class NtcBetaProcedure(procedure.ProcedureShell):
     def __init__(self, streams, *kwargs):
@@ -14,17 +16,17 @@ class NtcBetaProcedure(procedure.ProcedureShell):
 
     @property
     def r25(self):
-        return self.parameters['r25']
+        return self.parameters['r25'] # returns a quantity
 
     @property
     def beta(self):
-        return self.parameters['beta']
+        return self.parameters['beta'] # returns a quantity
 
     def do_beta(self, arg):
         ''' beta <n> The thermistors defined beta value'''
         
         try:
-            self.beta.scaled_value = float(arg)
+            self.beta.value = float(arg)
         except:
             print(' invalid value: beta unchanged.')
 
@@ -36,7 +38,7 @@ class NtcBetaProcedure(procedure.ProcedureShell):
         ''' r25 <n> The thermistors defined resistance in ohms at 25 Celsius'''
         
         try:
-            self.r25.scaled_value = float(arg)
+            self.r25.value = float(arg)
         except:
             print(' invalid value: r25 unchanged.')
 
@@ -46,17 +48,17 @@ class NtcBetaProcedure(procedure.ProcedureShell):
         
     def show(self):
         print('  Units:  {}'.format(self.scaled_units))
-        print('   R25:    {} {}'.format(self.r25.scaled_value, self.r25.scaled_units))
-        print('   Beta:   {}'.format(self.beta.scaled_value))
+        print('   {}'.format(self.r25))
+        print('   {}'.format(self.beta))
 
         return
 
     def prep(self, sensor):
         if sensor.calibration.equation is None:
-            sensor.calibration.equation = PhorpNtcBetaEquation()
+            sensor.calibration.equation = PhorpNtcBetaEquation() # danger
             
-        sensor.calibration.equation.beta = self.parameters['beta'].scaled_value
-        sensor.calibration.equation.r25 = self.parameters['r25'].scaled_value
+        sensor.calibration.equation.beta = self.parameters['beta'].value
+        sensor.calibration.equation.r25 = self.parameters['r25'].value
         
         super().prep(sensor)
 
@@ -64,6 +66,8 @@ class NtcBetaProcedure(procedure.ProcedureShell):
         
     def cal(self, sensor):
         ok = True
+        if ok:
+            sensor.calibration.timestamp = datetime.date.today()
 
         return ok
 
@@ -75,7 +79,7 @@ class NtcBetaProcedure(procedure.ProcedureShell):
             parameter_prefix = '{}.{}'.format(my_prefix, param.name)
             package += '\n'
             package += param.pack(parameter_prefix)
-        
+
         return package
 
     def unpack(self, package):
@@ -83,9 +87,9 @@ class NtcBetaProcedure(procedure.ProcedureShell):
 
         if 'parameters' in package:        
             for template in package['parameters'].values():
-                param = parameter.Constant('','','')
-                param.unpack(template)
-                self.parameters[param.name] = param
+                quant = quantity.Quantity()
+                quant.unpack(template)
+                self.parameters[quant.name] = quant
             
         return
 

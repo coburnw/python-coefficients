@@ -2,6 +2,7 @@
 coefficients.toml
 
 junk
+*.bak
 
 # emacs stuff
 *~

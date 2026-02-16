@@ -18,6 +18,7 @@ class PhorpStream(calcrib.Stream):
         self.address = None
 
         self._raw_value = 0
+        self.measured_quantity = calcrib.Quantity('Measured', 'V')
         
         return
 
@@ -41,6 +42,8 @@ class PhorpStream(calcrib.Stream):
         self.channel.start_conversion()
         time.sleep(self.channel.conversion_time)
         self._raw_value = self.channel.get_conversion_volts()
+        
+        self.measured_quantity.value = self._raw_value
 
         return
 
@@ -102,8 +105,8 @@ class ThermistorProcedure(calcrib.NtcBetaProcedure):
         self.scaled_units = 'degC'
 
         # the default setpoint settings.
-        self.parameters['beta'] = calcrib.Constant('beta', 'K', 3574.6)
-        self.parameters['r25'] = calcrib.Constant('r25', 'Ohms', 10000)
+        self.parameters['beta'] = calcrib.Quantity('Beta', 'K', 3574.6)
+        self.parameters['r25'] = calcrib.Quantity('R25', 'Ohms', 10000)
 
         return
 
@@ -128,8 +131,11 @@ class DoProcedure(calcrib.PolynomialProcedure):
         self.scaled_units = 'mg/L'
 
         # the default setpoint settings.
-        self.parameters['p1'] = calcrib.Setpoint('p1', self.scaled_units, 0.0)
-        self.parameters['p2'] = calcrib.Setpoint('p2', self.scaled_units, 9.09)
+        sp1 = calcrib.Quantity('SP1', self.scaled_units, 0.0)
+        sp2 = calcrib.Quantity('SP2', self.scaled_units, 9.09)
+
+        self.parameters['sp1'] = calcrib.ConstantSetpoint(sp1, sp1.clone())
+        self.parameters['sp2'] = calcrib.StreamSetpoint(sp2)
 
         return
 
@@ -154,8 +160,11 @@ class OrpProcedure(calcrib.PolynomialProcedure):
         self.scaled_units = 'mV'
 
         # the default setpoint settings.
-        self.parameters['p1'] = calcrib.Setpoint('p1', self.scaled_units, 0.0)
-        self.parameters['p2'] = calcrib.Setpoint('p2', self.scaled_units, 225)
+        sp1 = calcrib.Quantity('SP1', self.scaled_units, 0.0)
+        sp2 = calcrib.Quantity('SP2', self.scaled_units, 225)
+
+        self.parameters['sp1'] = calcrib.StreamSetpoint(sp1)
+        self.parameters['sp2'] = calcrib.StreamSetpoint(sp2)
 
         return
 
@@ -180,9 +189,13 @@ class PhProcedure(calcrib.PolynomialProcedure):
         self.scaled_units = 'pH'
 
         # the default setpoint settings.
-        self.parameters['p1'] = calcrib.Setpoint('p1', self.scaled_units, 4.0)
-        self.parameters['p2'] = calcrib.Setpoint('p2', self.scaled_units, 7.0)
-        self.parameters['p3'] = calcrib.Setpoint('p3', self.scaled_units, 10.0)
+        sp1 = calcrib.Quantity('SP1', self.scaled_units, 4.0)
+        sp2 = calcrib.Quantity('SP2', self.scaled_units, 7.0)
+        sp3 = calcrib.Quantity('SP3', self.scaled_units, 10.0)
+        
+        self.parameters['sp1'] = calcrib.StreamSetpoint(sp1)
+        self.parameters['sp2'] = calcrib.StreamSetpoint(sp2)
+        self.parameters['sp3'] = calcrib.StreamSetpoint(sp3)
 
         return
 
@@ -190,12 +203,15 @@ class PhProcedure(calcrib.PolynomialProcedure):
         if not  sensor.calibration.is_valid:
             print(' Sensor out of calibration: ')
             return
-        
-        slope = sensor.calibration.coefficients['slope']
-        offset = sensor.calibration.evaluate_x(7.0)
 
-        print(' slope = {} {}/unit '.format(round(slope,3), 'mV'))
-        print(' offset = {} {}'.format(round(offset,3), 'mV'))
+        if sensor.calibration.equation.degree == 1:
+            slope = sensor.calibration.equation.coefficients[1]
+            offset = sensor.calibration.equation.evaluate_x(7.0)
+
+            print(' slope = {} {}/unit '.format(round(slope,3), 'mV'))
+            print(' offset = {} {}'.format(round(offset,3), 'mV'))
+        else:
+            print(' calibration equation is in an unsupported degree for quality evaluation')
 
         return
 
@@ -236,6 +252,5 @@ if __name__ == '__main__':
                         time.sleep(0.5)
 
                 print('')
-            
-
+                
     exit()

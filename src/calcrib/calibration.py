@@ -39,8 +39,8 @@ class Calibration():
         print(self.pack('xyz'))
         return
     
-    def generate(self):
-        raise NotImplemented
+    # def generate(self):
+    #     raise NotImplemented
     
     def pack(self, prefix):
         package = ''
