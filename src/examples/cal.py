@@ -90,7 +90,7 @@ class PhorpStream(calcrib.Stream):
         return 'mV'
     
     
-class ThermistorProcedure(calcrib.NtcBetaProcedure):
+class ThermistorProcedure(calcrib.PhorpNtcBetaProcedure):
     intro = 'Beta Thermistor Configuration'
     
     def __init__(self, streams, *kwargs):
@@ -99,7 +99,7 @@ class ThermistorProcedure(calcrib.NtcBetaProcedure):
         self.stream_type = 'PhorpStream'
         self.stream_address = 'a1'
         
-        self.type = 'ntc'
+        self.kind = 'ntc'
 
         self.property = 'Temperature'
         self.scaled_units = 'degC'
@@ -125,8 +125,8 @@ class DoProcedure(calcrib.PolynomialProcedure):
         self.stream_type = 'PhorpStream'
         self.stream_address = 'a2'
         
-        self.type = 'do'
-
+        self.kind = 'do'
+        
         self.property = 'Dissolved Oxygen'
         self.scaled_units = 'mg/L'
 
@@ -154,7 +154,7 @@ class OrpProcedure(calcrib.PolynomialProcedure):
         self.stream_type = 'PhorpStream'
         self.stream_address = 'a2'
         
-        self.type = 'orp'
+        self.kind = 'orp'
 
         self.property = 'Eh'
         self.scaled_units = 'mV'
@@ -183,7 +183,7 @@ class PhProcedure(calcrib.PolynomialProcedure):
         self.stream_type = 'PhorpStream'
         self.stream_address = 'a2'
         
-        self.type = 'ph'
+        self.kind = 'ph'
 
         self.property = 'pH'
         self.scaled_units = 'pH'

@@ -10,8 +10,7 @@ class PolynomialProcedure(procedure.ProcedureShell):
     def __init__(self, streams, *kwargs):
         super().__init__(streams, *kwargs)
 
-        self.parameters = dict()
-        self.point_count = 2
+        self.point_count = 2 # spread_count?
         
         return
 
@@ -89,41 +88,38 @@ class PolynomialProcedure(procedure.ProcedureShell):
         return
 
     def prep(self, sensor):
+        super().prep(sensor)
+
         if sensor.calibration.equation is None:
             sensor.calibration.equation = PolynomialEquation()
         
-        # give sensor its own copy of paramters
-        sensor.parameters = dict()
-        sensor.parameters[self.sp1.name] = self.sp1.clone()
-        sensor.parameters[self.sp2.name] = self.sp2.clone()
+        # copy parameters of interest
+        sensor.calibration.parameters = dict()
+        sensor.calibration.parameters[self.sp1.name] = self.sp1.clone()
+        sensor.calibration.parameters[self.sp2.name] = self.sp2.clone()
         if self.point_count == 3:
-            sensor.parameters[self.sp3.name] = self.sp3.clone()
-
-        super().prep(sensor)
+            sensor.calibration.parameters[self.sp3.name] = self.sp3.clone()
 
         return
         
-    def cal(self, sensor):
+    def evaluate(self, sensor):
         print(' running {} point calibration on sensor {}'.format(self.point_count, sensor.id))
         ok = True
 
-        # run thru the setpoints
-        for parameter in sensor.parameters.values():
-            if parameter.name in ['sp1', 'sp2', 'sp3']:
-                if not parameter.run(sensor):
-                    ok = False
-                    break
+        # assume all our parameters are setpoints...
+        for setpoint in sensor.calibration.parameters.values():
+            if not setpoint.run(sensor):
+                ok = False
+                break
 
-        if ok:
-            sensor.calibration.timestamp = datetime.date(1970, 1, 1)
-            
-            p1 = sensor.parameters['sp1']
-            p2 = sensor.parameters['sp2']
-            ok = sensor.calibration.equation.generate(p1, p2)
-            
-            if ok:
-                sensor.calibration.timestamp = datetime.date.today()
-    
+        return ok
+
+    def save(self, sensor):
+        p1 = sensor.calibration.parameters['sp1']
+        p2 = sensor.calibration.parameters['sp2']
+        
+        ok = sensor.calibration.equation.generate(p1, p2)            
+
         return ok
 
     def pack(self, prefix):
@@ -131,8 +127,8 @@ class PolynomialProcedure(procedure.ProcedureShell):
         package += 'point_count = {}\n'.format(self.point_count)
 
         my_prefix = '{}.{}'.format(prefix, 'parameters')
-        for parameter in self.parameters.values():
-            parameter_prefix = '{}.{}'.format(my_prefix, parameter.name)
+        for name, parameter in self.parameters.items():
+            parameter_prefix = '{}.{}'.format(my_prefix, name)
             package += '\n'
             package += parameter.pack(parameter_prefix)
         
@@ -142,11 +138,12 @@ class PolynomialProcedure(procedure.ProcedureShell):
         super().unpack(package)
         self.point_count = package['point_count']
 
-        if 'parameters' in package:        
-            for template in package['parameters'].values():
-                parameter = sp.StreamSetpoint(quantity.Quantity())
-                parameter.unpack(template)
-                self.parameters[parameter.name] = parameter
+        # need a parameter factory and move to Procedure
+        if 'parameters' in package:
+            for name, section in package['parameters'].items():
+                setpoint = sp.StreamSetpoint(quantity.Quantity())
+                setpoint.unpack(section)
+                self.parameters[setpoint.name] = setpoint
             
         return
     
@@ -168,9 +165,6 @@ class PolynomialEquation(equation.Equation):
         return len(self.coefficients)
 
     def generate(self, p1, p2):
-        #print(p1.target_quantity, p1.measured_quantity)
-        #print(p2.target_quantity, p2.measured_quantity)
-        
         is_valid = False
         try:
             dx = p2.target_quantity.value - p1.target_quantity.value

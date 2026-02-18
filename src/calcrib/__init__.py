@@ -10,3 +10,4 @@ from .quantity import Quantity
 from .polynomial import PolynomialEquation
 from .polynomial import PolynomialProcedure
 from .thermistor import NtcBetaProcedure
+from .thermistor import PhorpNtcBetaProcedure

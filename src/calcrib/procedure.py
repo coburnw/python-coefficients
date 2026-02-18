@@ -8,21 +8,26 @@ class ProcedureShell(shell.Shell):
     def __init__(self, streams, *kwargs):
         super().__init__(*kwargs)
 
-        self.procedure_type = self.__class__.__name__
-        
         self.streams = streams
         self.stream_type = None
         self.stream_address = None
-        
+
+        # set by specialized procedure
+        self.kind = None
+        self.parameters = dict()
+        self.property = None
         self.scaled_units = None
         self.interval = datetime.timedelta(days=180)
-
 
         return
 
     @property
+    def type(self):
+        return self.__class__.__name__
+    
+    @property
     def prompt(self):
-        text = 'edit procedure ({})'.format(self.type)
+        text = 'edit procedure ({})'.format(self.kind)
         return '{}: '.format(self.cyan(text))
     
     def preloop(self):
@@ -83,35 +88,56 @@ class ProcedureShell(shell.Shell):
         return False
 
     def prep(self, sensor):
-        #sensor.name = self.name
-        sensor.name = '{}1'.format(self.type)
-        sensor.property = self.property
-        
-        sensor.calibration.type = self.__class__.__name__
-        sensor.calibration.scaled_units = self.scaled_units
-        sensor.calibration.interval = self.interval
+        from . import calibration # circular reference
+
+        if sensor.kind is None:
+            # initialize a new sensor
+            sensor.kind = self.kind
+            sensor.name = '{}.1'.format(self.kind)
+            sensor.property = self.property
+
+        if sensor.calibration is None:
+            sensor.calibration = calibration.Calibration()
+            sensor.calibration.procedure_type = self.type
+            sensor.calibration.scaled_units = self.scaled_units
+            sensor.calibration.interval = self.interval
 
         sensor.stream_type = self.stream_type        
-        stream = self.streams[self.stream_type]() # create a new stream instance
-
+        stream = self.streams[sensor.stream_type]() # create a new stream instance
         sensor.connect(stream, self.stream_address) # and override deployed address
         
         return
     
     def run(self, sensor):
-        if self.cal(sensor):
+        if not self.evaluate(sensor):
+            print(' sensor calibration canceled.')
+        else:
+            sensor.calibration.timestamp = datetime.date(1970, 1, 1)
+            if self.save(sensor):
+                sensor.calibration.timestamp = datetime.date.today()
+            else:
+                print(' sensor calibration failed.  calibration invalidated.')
+               
             # prompt here to accept...
-            pass
         
         # sensor.calibration.show()
 
         return
 
+    def evaluate(self, sensor):
+        ''' specialized evaluation of sensor calibration constants'''
+        raise NotImplemented
+    
+    def save(self, sensor):
+        ''' specialized save/use of sensor calibration constatns'''
+        raise NotImplemented
+    
     def pack(self, prefix):
         # Procedure
         package = ''
-        package += 'procedure_type = "{}"\n'.format(self.procedure_type)
-        package += 'units = "{}"\n'.format(self.scaled_units)
+        package += 'type = "{}"\n'.format(self.type)
+        package += 'kind = "{}"\n'.format(self.kind)
+        package += 'units = "{}"\n'.format(self.scaled_units) # xx
         package += 'stream_type = "{}"\n'.format(self.stream_type)
         package += 'stream_address = "{}"\n'.format(self.stream_address)
         package += 'interval = {}\n'.format(self.interval.days)
@@ -120,7 +146,8 @@ class ProcedureShell(shell.Shell):
 
     def unpack(self, package):
         # procedure
-        ### self.procedure_type = package['procedure_type'] dont override our own type
+        ### self.type = package['type'] dont override our own type
+        self.kind = package['kind']
         self.scaled_units = package['units']
         self.stream_type = package['stream_type']
         self.stream_address = package['stream_address']
@@ -199,7 +226,7 @@ class Procedures(shell.Shell):
 
     def unpack(self, package):
         for key, template in package.items():
-            print('unpacking procedure: {}'.format(key))
+            #print('unpacking procedure: {}'.format(key))
             
             if key in self.procedures.keys():
                 procedure = self.procedures[key]

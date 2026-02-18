@@ -1,5 +1,13 @@
 from . import shell
 
+class Parameter():
+    def __init__(self):
+        pass
+
+    @property
+    def type(self):
+        return self.__class__.__name__
+    
 class ParameterShell(shell.Shell):
     intro = 'Parameter Configuration'
     prompt = 'parameter: '
@@ -71,7 +79,7 @@ class ParameterShell(shell.Shell):
         return
 
 
-class Constant(ParameterShell):
+class xConstantQuantity(ParameterShell):
     def __init__(self, name, units, value, *kwargs):
         super().__init__(name, units, value, *kwargs)
 

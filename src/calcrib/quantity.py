@@ -1,18 +1,29 @@
 from . import shell
 
-class Quantity():
-    def __init__(self, name='name', units='units', value=None, prefix=None):
+class Quantity(): # Parameter?
+    def __init__(self, name='name', units='units', value=None, prefix=None, package=None):
         self.title = 'empty title'
 
         self._name = name
         self._units = units
         self._value = value
         self._prefix = prefix
-        
+
+        if package is not None:
+            self.unpack(package)
+            
         return
 
+    @classmethod
+    def from_package(cls, section):
+        return cls(package=section)
+    
     def __str__(self):
         return '{}: {} {}'.format(self.name, self.value, self.units)
+
+    @property
+    def type(self):
+        return self.__class__.__name__
     
     @property
     def name(self):
@@ -60,6 +71,7 @@ class Quantity():
         # Constant parameter
         package = ''
         package += '[{}]\n'.format(prefix)
+        package += 'type = "{}"\n'.format(self.type)
         
         package += 'name = "{}"\n'.format(self._name)
         package += 'value = {}\n'.format(self._value)

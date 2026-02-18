@@ -7,11 +7,12 @@ class Calibration():
         self.timestamp = datetime.date(1970, 1, 1)
         self.interval = datetime.timedelta(days=0)
 
+        self.procedure_type = None
+        self.equation = None
+        self.parameters = dict()
+        
         self.scaled_units = ''
 
-        self.type = None
-        self.equation = None
-        
         if package:
             self.unpack(package)
 
@@ -45,7 +46,7 @@ class Calibration():
     def pack(self, prefix):
         package = ''
         package += '[{}]\n'.format(prefix)
-        package += 'type = "{}"\n'.format(self.type)
+        package += 'procedure_type = "{}"\n'.format(self.procedure_type)
         package += 'scaled_units = "{}"\n'.format(self.scaled_units)
         package += 'timestamp = "{}"\n'.format(self.timestamp.isoformat())
         package += 'interval = "{}"\n'.format(self.interval.days)
@@ -57,14 +58,14 @@ class Calibration():
         return package
     
     def unpack(self, package):
-        self.type = package['type'] # perhaps dont override instantiated value?
-        
+        self.procedure_type = package['procedure_type'] 
         self.scaled_units = package['scaled_units']
         self.timestamp = datetime.date.fromisoformat(package['timestamp'])
         self.interval = datetime.timedelta(days=int(package['interval']))
 
         if 'equation' in package:
             section = package['equation']
+
             # self.equation = factory.EquationFactory().new(section)
             f = factory.EquationFactory()
             self.equation = f.new(section)

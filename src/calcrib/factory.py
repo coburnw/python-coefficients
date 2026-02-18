@@ -1,4 +1,3 @@
-from . import calibration
 from . import thermistor
 from . import polynomial
 

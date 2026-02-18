@@ -1,10 +1,7 @@
 import collections
 
 from . import shell
-
 from . import calibration
-#from . import polynomial
-#from . import thermistor
 
 class Stream():
     def __init__(self, type):
@@ -32,17 +29,14 @@ class Stream():
     
     
 class Sensor():
-    def __init__(self, sensor_type, sensor_id):
-        self.type = sensor_type
-        self.id = sensor_id.strip()
-
-        self.stream_type = None
+    def __init__(self, sensor_id):
+        self.id = sensor_id.strip().lower()
         
         # configured by procedure/deploy.prep()
+        self.kind = None
+        self.stream_type = None
         self.stream = None
-        self.setpoints = dict()
-        self.calibration = calibration.Calibration()
-
+        self.calibration = None # calibration.Calibration()
         
         # deployed sensor values
         self.name = ''
@@ -51,6 +45,10 @@ class Sensor():
 
         return
 
+    # @property
+    # def type(self):
+    #     return self.__class__.__name__
+    
     def connect(self, stream, address=None):
         self.stream = stream
         
@@ -96,7 +94,7 @@ class Sensor():
         # sensor
         package = ''
         package += 'id = "{}"\n'.format(self.id)
-        package += 'type = "{}"\n'.format(self.type)
+        package += 'kind = "{}"\n'.format(self.kind)
 
         package += 'name = "{}"\n'.format(self.name)
         package += 'location = "{}"\n'.format(self.location)
@@ -115,7 +113,7 @@ class Sensor():
     def unpack(self, package):
         # sensor
         self.id = package['id']
-        self.type = package['type']
+        self.kind = package['kind']
 
         self.name = package.get('name', '')
         self.location = package.get('location', '')
@@ -124,7 +122,6 @@ class Sensor():
         self.stream_type = package.get('stream_type')
         self.address = package.get('address', 'ND')
 
-        # print('unpacking sensor {}'.format(self.name))
         if 'calibration' in package:
             self.calibration = calibration.Calibration(package['calibration'])
                 
@@ -144,8 +141,8 @@ class SensorShell(shell.Shell):
         return
 
     @property
-    def type(self):
-        return self.sensor.type
+    def kind(self):
+        return self.sensor.kind
     
     @property
     def id(self):
@@ -179,7 +176,7 @@ class SensorShell(shell.Shell):
     def do_show(self, arg=None):
         ''' print sensors parameters'''
         print(' ID:   {}'.format(self.id))
-        print('  Type: {}'.format(self.sensor.type))
+        print('  Kind: {}'.format(self.sensor.kind))
         print('  Property: {}'.format(self.sensor.property))
         print('  Name: {}'.format(self.sensor.name))
         print('  Location: {}'.format(self.sensor.location))
@@ -309,7 +306,7 @@ class Sensors(collections.UserDict):
             if sensor_key in self.keys():
                 print(' Error: sensor already exists. ignoring.')
             else:
-                sensor = Sensor(template['type'], template['id'])
+                sensor = Sensor(template['id'])
                 sensor.unpack(template)
                 self.data[sensor_key] = sensor
                 
@@ -349,13 +346,13 @@ class SensorsShell(shell.Shell):
 
     @property
     def procedure(self):
-        procedure = self.procedures[self.sensor.type]
+        procedure = self.procedures[self.sensor.kind]
 
         return procedure
 
     @property
-    def types(self):
-        # return a list of known sensor types
+    def kinds(self):
+        # return a list of known sensor kinds
         return list(self.procedures.keys())
     
     @property
@@ -396,30 +393,30 @@ class SensorsShell(shell.Shell):
             print(' sensor already exists.')
             return
                
-        sensor_type = input(' Enter sensor type {}: '.format(self.types)).strip()
-        if len(sensor_type) == 0:
-            print(' missing sensor type.  known types are {}.'.format(self.types))
+        sensor_kind = input(' Enter sensor kind {}: '.format(self.kinds)).strip()
+        if len(sensor_kind) == 0:
+            print(' missing sensor kind.  known kinds are {}.'.format(self.kinds))
             return
         
-        if sensor_type.lower() not in self.types:
-            print(' known types are {}. sensor not created.'.format(self.types))
+        if sensor_kind.lower() not in self.kinds:
+            print(' known kinds are {}. sensor not created.'.format(self.kinds))
             return
 
-        sensor = self.new_sensor(sensor_type, sensor_key)
+        sensor = self.new_sensor(sensor_kind, sensor_key)
 
         self.do_edit('')
         
         return
 
-    def new_sensor(self, sensor_type, sensor_id):
-        print(' creating new {} sensor {}'.format(sensor_type, sensor_id))
+    def new_sensor(self, sensor_kind, sensor_id):
+        print(' creating new {} sensor {}'.format(sensor_kind, sensor_id))
 
-        sensor = Sensor(sensor_type, sensor_id)
+        sensor = Sensor(sensor_id)
         
         self.sensors[sensor_id] = sensor
         self.sensor_index = self.last_index
 
-        self.procedure.prep(sensor)
+        self.procedures[sensor_kind].prep(sensor)
 
         return sensor
         
@@ -456,7 +453,7 @@ class SensorsShell(shell.Shell):
             print(' No sensors in list.  "new" to add a sensor.')
             return
         
-        print('   ID\tType\tAddr\t  Expires\tName\tLocation')
+        print('   ID\tKind\tAddr\t  Expires\tName\tLocation')
         i = 0
         
         for sensor in self.sensors.values():
@@ -470,13 +467,13 @@ class SensorsShell(shell.Shell):
             if sensor.calibration.is_valid:
                 id = self.green(sensor.id)
 
-            type = sensor.type
+            kind = sensor.kind
             name = sensor.name
             addr = sensor.address
             location = sensor.location
             due_date = sensor.calibration.due_date
             
-            print(' {} {}\t{}\t{}\t{}\t{}\t{}'.format(carret, id, type, addr, due_date, name, location ))
+            print(' {} {}\t{}\t{}\t{}\t{}\t{}'.format(carret, id, kind, addr, due_date, name, location ))
         
         return
 
@@ -506,7 +503,7 @@ class SensorsShell(shell.Shell):
 
         for sensor in self.sensors.values():
             # deploy.prep(sensor)
-            proc = self.procedures[sensor.type]
+            proc = self.procedures[sensor.kind]
             proc.prep(sensor)
 
         return
