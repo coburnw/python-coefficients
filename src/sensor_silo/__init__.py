@@ -1,5 +1,5 @@
-from .crib import Shell
-from .crib import Deploy
+from .silo import Shell
+from .silo import Deploy
 
 from .sensor import Stream
 

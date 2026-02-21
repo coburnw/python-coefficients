@@ -1,10 +1,10 @@
 [project]
-name = "calcrib"
+name = "sensor_silo"
 version = "0.0.1"
 authors = [
   { name="Coburn Wightman", email="coburnw@halfstop.top" },
 ]
-description = "Python library/toolcrib for maintaining metadata and calibration data for a group of sensors"
+description = "Python library for maintaining metadata and calibration data for a group of sensors"
 readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [
@@ -15,4 +15,4 @@ classifiers = [
 license = {text = "AGPL-3.0 License"}
 
 [project.urls]
-Homepage = "https://github.com/coburnw/python-cal-crib"
+Homepage = "https://github.com/coburnw/sensor-silo"

@@ -108,8 +108,8 @@ class ConfigFile():
     
     
 class Shell(shell.Shell):
-    intro = 'Welcome to the Calibration Toolcrib. ? for help.'
-    prompt = 'crib: '
+    intro = 'Welcome to the Sensor Silo. ? for help.'
+    prompt = 'silo: '
 
     def __init__(self, procedures, *kwargs):
         super().__init__(*kwargs)
@@ -135,6 +135,12 @@ class Shell(shell.Shell):
     def do_sensors(self, arg):
         ''' view/edit sensor database'''
         self.sensors.cmdloop()
+
+        return
+
+    def do_deploy(self, arg):
+        ''' view/edit sensor deployment'''
+        print(' Tune in later...')
 
         return
 

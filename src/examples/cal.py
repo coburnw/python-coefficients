@@ -5,9 +5,9 @@ import smbus3 as smbus
 import phorp
 import frame_streams as fs
 
-import calcrib
+import sensor_silo as silo
 
-class PhorpStream(calcrib.Stream):
+class PhorpStream(silo.Stream):
     i2c_bus = None
     
     def __init__(self):
@@ -18,7 +18,7 @@ class PhorpStream(calcrib.Stream):
         self.address = None
 
         self._raw_value = 0
-        self.measured_quantity = calcrib.Quantity('Measured', 'V')
+        self.measured_quantity = silo.Quantity('Measured', 'V')
         
         return
 
@@ -90,7 +90,7 @@ class PhorpStream(calcrib.Stream):
         return 'mV'
     
     
-class ThermistorProcedure(calcrib.PhorpNtcBetaProcedure):
+class ThermistorProcedure(silo.PhorpNtcBetaProcedure):
     intro = 'Beta Thermistor Configuration'
     
     def __init__(self, streams, *kwargs):
@@ -105,8 +105,8 @@ class ThermistorProcedure(calcrib.PhorpNtcBetaProcedure):
         self.scaled_units = 'degC'
 
         # the default setpoint settings.
-        self.parameters['beta'] = calcrib.Quantity('Beta', 'K', 3574.6)
-        self.parameters['r25'] = calcrib.Quantity('R25', 'Ohms', 10000)
+        self.parameters['beta'] = silo.Quantity('Beta', 'K', 3574.6)
+        self.parameters['r25'] = silo.Quantity('R25', 'Ohms', 10000)
 
         return
 
@@ -116,7 +116,7 @@ class ThermistorProcedure(calcrib.PhorpNtcBetaProcedure):
         return
 
     
-class DoProcedure(calcrib.PolynomialProcedure):
+class DoProcedure(silo.PolynomialProcedure):
     intro = 'Dissolved Oxygen Procedure Configuration'
     
     def __init__(self, streams, *kwargs):
@@ -131,11 +131,11 @@ class DoProcedure(calcrib.PolynomialProcedure):
         self.scaled_units = 'mg/L'
 
         # the default setpoint settings.
-        sp1 = calcrib.Quantity('SP1', self.scaled_units, 0.0)
-        sp2 = calcrib.Quantity('SP2', self.scaled_units, 9.09)
+        sp1 = silo.Quantity('SP1', self.scaled_units, 0.0)
+        sp2 = silo.Quantity('SP2', self.scaled_units, 9.09)
 
-        self.parameters['sp1'] = calcrib.ConstantSetpoint(sp1, sp1.clone())
-        self.parameters['sp2'] = calcrib.StreamSetpoint(sp2)
+        self.parameters['sp1'] = silo.ConstantSetpoint(sp1, sp1.clone())
+        self.parameters['sp2'] = silo.StreamSetpoint(sp2)
 
         return
 
@@ -145,7 +145,7 @@ class DoProcedure(calcrib.PolynomialProcedure):
         return
 
     
-class OrpProcedure(calcrib.PolynomialProcedure):
+class OrpProcedure(silo.PolynomialProcedure):
     intro = 'ORP Procedure Configuration'
     
     def __init__(self, streams, *kwargs):
@@ -160,11 +160,11 @@ class OrpProcedure(calcrib.PolynomialProcedure):
         self.scaled_units = 'mV'
 
         # the default setpoint settings.
-        sp1 = calcrib.Quantity('SP1', self.scaled_units, 0.0)
-        sp2 = calcrib.Quantity('SP2', self.scaled_units, 225)
+        sp1 = silo.Quantity('SP1', self.scaled_units, 0.0)
+        sp2 = silo.Quantity('SP2', self.scaled_units, 225)
 
-        self.parameters['sp1'] = calcrib.StreamSetpoint(sp1)
-        self.parameters['sp2'] = calcrib.StreamSetpoint(sp2)
+        self.parameters['sp1'] = silo.StreamSetpoint(sp1)
+        self.parameters['sp2'] = silo.StreamSetpoint(sp2)
 
         return
 
@@ -174,7 +174,7 @@ class OrpProcedure(calcrib.PolynomialProcedure):
         return
 
     
-class PhProcedure(calcrib.PolynomialProcedure):
+class PhProcedure(silo.PolynomialProcedure):
     intro = 'pH Procedure Configuration'
 
     def __init__(self, streams, *kwargs):
@@ -189,13 +189,13 @@ class PhProcedure(calcrib.PolynomialProcedure):
         self.scaled_units = 'pH'
 
         # the default setpoint settings.
-        sp1 = calcrib.Quantity('SP1', self.scaled_units, 4.0)
-        sp2 = calcrib.Quantity('SP2', self.scaled_units, 7.0)
-        sp3 = calcrib.Quantity('SP3', self.scaled_units, 10.0)
+        sp1 = silo.Quantity('SP1', self.scaled_units, 4.0)
+        sp2 = silo.Quantity('SP2', self.scaled_units, 7.0)
+        sp3 = silo.Quantity('SP3', self.scaled_units, 10.0)
         
-        self.parameters['sp1'] = calcrib.StreamSetpoint(sp1)
-        self.parameters['sp2'] = calcrib.StreamSetpoint(sp2)
-        self.parameters['sp3'] = calcrib.StreamSetpoint(sp3)
+        self.parameters['sp1'] = silo.StreamSetpoint(sp1)
+        self.parameters['sp2'] = silo.StreamSetpoint(sp2)
+        self.parameters['sp3'] = silo.StreamSetpoint(sp3)
 
         return
 
@@ -234,11 +234,11 @@ if __name__ == '__main__':
             procedures['orp'] = OrpProcedure(streams)
             procedures['ntc'] = ThermistorProcedure(streams)
 
-            shell = calcrib.Shell(procedures) #instantiate first then append procedures?
+            shell = silo.Shell(procedures) #instantiate first then append procedures?
             shell.cmdloop()
         else:
             # load toml file, initialize sensors, and run
-            project = calcrib.Deploy()
+            project = silo.Deploy()
             project.load()
             project.connect(streams)
             while True:
