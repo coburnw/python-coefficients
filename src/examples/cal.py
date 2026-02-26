@@ -24,7 +24,7 @@ import frame_streams as fs
 
 import sensor_silo as silo
 
-class PhorpStream(silo.Stream):
+class PhorpSource(silo.Stream):
     i2c_bus = None
     
     def __init__(self):
@@ -113,7 +113,7 @@ class ThermistorProcedure(silo.PhorpNtcBetaProcedure):
     def __init__(self, streams, *kwargs):
         super().__init__(streams, *kwargs)
 
-        self.stream_type = 'PhorpStream'
+        self.stream_type = 'PhorpSource'
         self.stream_address = 'a1'
         
         self.kind = 'ntc'
@@ -139,7 +139,7 @@ class DoProcedure(silo.PolynomialProcedure):
     def __init__(self, streams, *kwargs):
         super().__init__(streams, *kwargs)
         
-        self.stream_type = 'PhorpStream'
+        self.stream_type = 'PhorpSource'
         self.stream_address = 'a2'
         
         self.kind = 'do'
@@ -168,7 +168,7 @@ class OrpProcedure(silo.PolynomialProcedure):
     def __init__(self, streams, *kwargs):
         super().__init__(streams, *kwargs)
         
-        self.stream_type = 'PhorpStream'
+        self.stream_type = 'PhorpSource'
         self.stream_address = 'a2'
         
         self.kind = 'orp'
@@ -197,7 +197,7 @@ class PhProcedure(silo.PolynomialProcedure):
     def __init__(self, streams, *kwargs):
         super().__init__(streams, *kwargs)
 
-        self.stream_type = 'PhorpStream'
+        self.stream_type = 'PhorpSource'
         self.stream_address = 'a2'
         
         self.kind = 'ph'
@@ -241,8 +241,8 @@ if __name__ == '__main__':
 
     with smbus.SMBus(1) as bus:
         streams = dict()
-        PhorpStream.i2c_bus = bus
-        streams[PhorpStream.__name__] = PhorpStream
+        PhorpSource.i2c_bus = bus
+        streams[PhorpSource.__name__] = PhorpSource
     
         if config == True:
             procedures = dict()

@@ -29,7 +29,8 @@ class Calibration():
         self.parameters = dict()
         
         self.scaled_units = ''
-
+        self.unit_id = ''
+        
         if package:
             self.unpack(package)
 
@@ -65,6 +66,7 @@ class Calibration():
         package += '[{}]\n'.format(prefix)
         package += 'procedure_type = "{}"\n'.format(self.procedure_type)
         package += 'scaled_units = "{}"\n'.format(self.scaled_units)
+        package += 'unit_id = "{}"\n'.format(self.unit_id)
         package += 'timestamp = "{}"\n'.format(self.timestamp.isoformat())
         package += 'interval = "{}"\n'.format(self.interval.days)
 
@@ -77,6 +79,7 @@ class Calibration():
     def unpack(self, package):
         self.procedure_type = package['procedure_type'] 
         self.scaled_units = package['scaled_units']
+        self.unit_id = package['unit_id']
         self.timestamp = datetime.date.fromisoformat(package['timestamp'])
         self.interval = datetime.timedelta(days=int(package['interval']))
 

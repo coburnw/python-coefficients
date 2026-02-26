@@ -20,6 +20,7 @@ import collections
 from . import shell
 from . import calibration
 
+# lets move to a source/sink nomenclature
 class Stream():
     def __init__(self, type):
         self.type = type
@@ -98,6 +99,10 @@ class Sensor():
     @property
     def scaled_units(self):
         return self.calibration.scaled_units
+
+    @property
+    def unit_id(self):
+        return self.calibration.unit_id
 
     def evaluate(self, raw_value):
         return self.calibration.equation.evaluate_y(raw_value)

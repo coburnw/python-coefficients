@@ -34,6 +34,7 @@ class ProcedureShell(shell.Shell):
         self.parameters = dict()
         self.property = None
         self.scaled_units = None
+        self.unit_id = None
         self.interval = datetime.timedelta(days=180)
 
         return
@@ -117,6 +118,7 @@ class ProcedureShell(shell.Shell):
             sensor.calibration = calibration.Calibration()
             sensor.calibration.procedure_type = self.type
             sensor.calibration.scaled_units = self.scaled_units
+            sensor.calibration.unit_id = self.unit_id
             sensor.calibration.interval = self.interval
 
         sensor.stream_type = self.stream_type        
@@ -154,7 +156,8 @@ class ProcedureShell(shell.Shell):
         package = ''
         package += 'type = "{}"\n'.format(self.type)
         package += 'kind = "{}"\n'.format(self.kind)
-        package += 'units = "{}"\n'.format(self.scaled_units) # xx
+        package += 'scaled_units = "{}"\n'.format(self.scaled_units)
+        package += 'unit_id = "{}"\n'.format(self.unit_id)
         package += 'stream_type = "{}"\n'.format(self.stream_type)
         package += 'stream_address = "{}"\n'.format(self.stream_address)
         package += 'interval = {}\n'.format(self.interval.days)
@@ -165,7 +168,8 @@ class ProcedureShell(shell.Shell):
         # procedure
         ### self.type = package['type'] dont override our own type
         self.kind = package['kind']
-        self.scaled_units = package['units']
+        self.scaled_units = package['scaled_units']
+        self.unit_id = package['unit_id']
         self.stream_type = package['stream_type']
         self.stream_address = package['stream_address']
         self.interval = datetime.timedelta(days=package['interval'])

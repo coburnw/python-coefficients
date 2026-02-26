@@ -23,6 +23,7 @@ import tomli
 from . import shell
 from . import procedure
 from . import sensor
+from . import deploy
 
 class xDeploy():
     def __init__(self, streams, *kwargs):
@@ -50,14 +51,50 @@ class xDeploy():
         return
 
 class Deploy():
-    def __init__(self):
+    def __init__(self, filename=None):
+        self.deployment = deploy.DeployShell()
         self.sensors = None
 
+        if filename is not None:
+            self.load(filename)
+            
         return
 
+    @property
+    def key_name(self):
+        return self.deployment.key_name
+
+    @property
+    def folder_name(self):
+        return self.deployment.folder_name
+
+    @property
+    def group_name(self):
+        return self.deployment.group_name
+
+    @property
+    def stream_period(self):
+        return self.deployment.update_interval*60
+
+    @property
+    def sample_period(self):
+        return self.stream_period / self.over_sample_rate
+
+    @property
+    def over_sample_rate(self):
+        return self.deployment.over_sample_rate
+
+    @property
+    def time_constant(self):
+        tc = self.deployment.filter_in_percent / 100
+        if tc < 1:
+            tc = 1
+            
+        return tc
+    
     def load(self, filename=None):
-        config = ConfigFile()        
-        filename = config.get_filename()
+        config = ConfigFile()
+        filename = config.get_filename(filename)
         package = config.load(filename)
         self.unpack(package)
 
@@ -65,7 +102,7 @@ class Deploy():
     
     def connect(self, streams):
         for sensor in self.sensors.values():
-            stream = streams[sensor.stream_type]() # create a new stream instance
+            stream = streams[sensor.stream_type]() # create a new hardware stream instance
             sensor.connect(stream)
 
         return
@@ -74,13 +111,16 @@ class Deploy():
         if 'sensors' in package:
             self.sensors = sensor.Sensors(package['sensors'])
 
+        if 'deployment' in package:
+            self.deployment.unpack(package['deployment'])
+
         return
 
 
 class ConfigFile():
     def __init__(self):
         self.suffix = '.toml'
-        self.filename = 'coefficients{}'.format(self.suffix)
+        self.filename = 'deployment{}'.format(self.suffix)
 
         return
 
@@ -107,8 +147,10 @@ class ConfigFile():
 
         return
 
-    def get_filename(self):
-        new_name = input('enter filename without suffix ({}): '.format(self.filename))
+    def get_filename(self, filename=None):
+        new_name = filename
+        if new_name is None:
+            new_name = input('enter filename without suffix ({}): '.format(self.filename))
 
         # https://stackoverflow.com/a/7406369
         keepcharacters = ('.','_')
@@ -133,6 +175,7 @@ class Shell(shell.Shell):
 
         self.procedures = procedure.Procedures(procedures)
         self.sensors = sensor.SensorsShell(self.procedures)
+        self.deploy = deploy.DeployShell()
 
         self.prompt = '{}'.format(self.cyan(self.prompt))
 
@@ -156,8 +199,8 @@ class Shell(shell.Shell):
         return
 
     def do_deploy(self, arg):
-        ''' view/edit sensor deployment'''
-        print(' Tune in later...')
+        ''' view/edit project deployment'''
+        self.deploy.cmdloop()
 
         return
 
@@ -208,6 +251,9 @@ class Shell(shell.Shell):
         prefix = 'sensors'
         package += self.sensors.pack(prefix)
 
+        prefix = 'deployment'
+        package += self.deploy.pack(prefix)
+
         return package
 
     def unpack(self, package):
@@ -218,6 +264,9 @@ class Shell(shell.Shell):
 
         if 'sensors' in package:
             self.sensors.unpack(package['sensors'])
+
+        if 'deployment' in package:
+            self.deploy.unpack(package['deployment'])
 
         return
     
