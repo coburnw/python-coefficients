@@ -18,7 +18,7 @@
 import sys
 import datetime
 
-import tomli
+import tomllib as tomli
 
 from . import shell
 from . import procedure
