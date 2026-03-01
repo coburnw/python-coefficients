@@ -213,24 +213,35 @@ class SensorShell(shell.Shell):
         ''' address <addr> enter deployed pHorp address of sensor, or ND for Not Deployed'''
 
         err_str = self.sensor.stream.validate_address(arg)
-        if err_str:
-            print(self.red(err_str))
-        else:
+        if not err_str:
             self.sensor.address = arg.strip().upper() #self.sensor.stream.address
             
         self.do_show()
+        
+        if err_str:
+            print(self.red(err_str))
         
         return False
 
     def do_name(self, arg):
         ''' name <name> enter deployed name of sensor'''
-        self.sensor.name = arg.strip()
+        name =  arg.strip()
+        
+        if len(name) > 0:
+            self.sensor.name = name
+
+        self.do_show()
 
         return False
 
     def do_location(self, arg):
         ''' location <location> enter deployed location of sensor'''
-        self.sensor.location = arg.strip()
+        location = arg.strip()
+        
+        if len(location) > 0:
+            self.sensor.location = location
+
+        self.do_show()
 
         return False
     

@@ -65,10 +65,10 @@ class PhorpSource(silo.Stream):
         return
 
     def validate_address(self, address):
-        board, chan_idx = self.split_address(address)
+        board_index, channel_index = self.split_address(address)
         
-        if board in 'abcdefg' and chan_idx in '1234':
-            #self.address = board + chan_idx
+        if board_index in 'abcdefg' and channel_index in '1234':
+            #self.address = board_index + channel_index
             pass
         elif address.strip().lower() == 'nd':
             #self.address = address.strip().upper()
@@ -76,11 +76,15 @@ class PhorpSource(silo.Stream):
         else:
             return 'invalid address. board_id is a-g, channel_id is 1-4 as in "b3"'
 
-        return
+        return None
         
     def split_address(self, address):
-        board_index = address[0].lower()
-        channel_index = address[1]
+        board_index = 'z'
+        channel_index = '99'
+        
+        if len(address) > 1:
+            board_index = address[0].lower()
+            channel_index = address[1]
 
         return (board_index, channel_index)
 

@@ -111,7 +111,7 @@ class ProcedureShell(shell.Shell):
         if sensor.kind is None:
             # initialize a new sensor
             sensor.kind = self.kind
-            sensor.name = '{}.1'.format(self.kind)
+            sensor.name = '{}.{}'.format(sensor.kind, sensor.id)
             sensor.property = self.property
 
         if sensor.calibration is None:

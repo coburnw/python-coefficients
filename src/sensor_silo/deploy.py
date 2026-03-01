@@ -24,9 +24,9 @@ class DeployShell(shell.Shell):
     def __init__(self, *kwargs): # sensors
         super().__init__(*kwargs)
 
-        self.key_name = ''
-        self.folder_name = ''
-        self.group_name = ''
+        self.key_name = 'api_key_name'
+        self.folder_name = 'folder_name'
+        self.group_name = 'group_name'
 
         self.update_interval = 60 # minutes
         self.over_sample_rate = 10 # samples per interval
@@ -64,12 +64,16 @@ class DeployShell(shell.Shell):
         ''' Enter name of Grovestreams API Key (typically hostname of deployed system)'''
         self.key_name = arg.strip().replace(' ', '_')
         
+        self.do_show()
+        
         return False
 
     def do_folder(self, arg):
         ''' Enter Grovestreams Folder Name'''
 
         self.folder_name = arg.strip().replace(' ', '_')
+        
+        self.do_show()
         
         return False
 
@@ -78,50 +82,68 @@ class DeployShell(shell.Shell):
 
         self.group_name = arg.strip().replace(' ', '_')
 
+        self.do_show()
+        
         return False
 
     def do_interval(self, arg):
         ''' Grovestreams update Interval in minutes'''
-        self.update_interval = int(arg)
+
+        try:
+            self.update_interval = int(arg)
+        except ValueError:
+            self.update_interval = 60
 
         if self.update_interval < 10:
             self.update_interval = 10
             
+        self.do_show()
+        
         return False
 
     def do_osr(self, arg):
         ''' Over Sample Rate, number of sensor samples to filter per Interval (10 is a good number)'''
 
-        self.over_sample_rate = int(arg)
+        try:
+            self.over_sample_rate = int(arg)
+        except ValueError:
+            self.over_sample_rate = 10
         
         if self.over_sample_rate > 100:
             self.over_sample_rate = 100
         elif self.over_sample_rate < 1:
             self.over_sample_rate = 1
             
+        self.do_show()
+        
         return False
 
     def do_filter(self, arg):
-        ''' Aproximate Filter Time Constant in percent of Interval'''
+        ''' Approximate Filter Time Constant, 1 = no filtering, OSR = 1 TC'''
 
-        self.filter_in_percent = int(arg)
-        
+        try:
+            self.filter_in_percent = int(arg) # xx not percent
+        except ValueError:
+            self.filter_in_percent = 1
+            
         if self.filter_in_percent < 0:
             self.filter_in_percent = 0
         if self.filter_in_percent > 250:
             self.filter_in_percent = 250
-            
+
+        self.do_show()
+        
         return False
     
     def do_show(self, arg=None):
         ''' print sensors parameters'''
-        print(' Group: {}'.format(self.group_name))
-        print('  Folder: {}'.format(self.folder_name))
+        print(' Folder: {}'.format(self.folder_name))
+        print('  Group: {}'.format(self.group_name))
         print('  Key Name: {}'.format(self.key_name))
         print('')
         print('  Interval: {} minutes'.format(self.update_interval))
         print('  OSR:  {} samples per interval'.format(self.over_sample_rate))
-        print('  Filter TC: {}% interval'.format(self.filter_in_percent))
+        print('  Filter TC: {}'.format(self.filter_in_percent))
         
         return False
 
